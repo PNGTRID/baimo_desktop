@@ -1,0 +1,228 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Production builds
+/frontend/dist/
+/backend/dist/
+/backend/build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.sqlite
+*.db
+*.sqlite3
+/backend/prisma/dev.db*
+/backend/prisma/migrations/dev.db*
+*.sql
+*.dump
+database-backups/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+/backend/coverage/
+/frontend/coverage/
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+/frontend/.next/
+/frontend/out/
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# Electron
+/out/
+/frontend/out/
+
+# Vite
+/frontend/dist-ssr/
+/frontend/*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Uploads and media
+/uploads/
+/backend/uploads/
+/public/uploads/
+/uploads/*
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+curl_temp.txt
+temp.sql
+temp_diff.sql
+cookies.txt
+tsc-errors.log
+fix_typescript.sh
+ssh_connect.exp
+sync_to_server.sh
+.claude/
+.codex/
+.spec-workflow/
+.playwright-mcp/
+*.tar.gz
+backend-*.tar.gz
+server-simple*.js
+server-simple*.cjs
+temp_server.js
+test-apis.js
+verify-data.js
+simple-server.py
+backend-*.js
+backend-*.ts
+backend/tsconfig.tsbuildinfo
+*.buildinfo
+
+# Documentation garbage
+docs/temp/
+docs/BRAND.md
+docs/CHANGELOG.md
+docs/CONTRIBUTING.md
+docs/PROJECT_SUMMARY.md
+FINAL_STATUS_REPORT.md
+FIXES_SUMMARY.md
+docs/development/AGENTS.md
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.csr
+/backend/ssl/
+/ssl/
+
+# Docker
+.dockerignore
+
+# Backup files
+*.bak
+*.backup
+*.old
+/backups/
+
+# Lock files (keep package-lock.json but ignore others)
+yarn.lock
+pnpm-lock.yaml
+
+# Local development
+.local/
+
+# Testing
+/backend/coverage/
+/frontend/coverage/
+/frontend/e2e/videos/
+/frontend/e2e/screenshots/
+
+# Build artifacts
+*.tgz
+*.tar.gz
+/frontend/build/
+
+# Configuration files with sensitive data
+config/local.js
+config/production.js
+
+# Monitoring and performance
+.benchmarks/
+
+# Sentry
+.sentryclirc
+
+# Project specific
+.bmad-core/
+.claude/
+.spec-workflow/
+白墨记账系统.prd
+
+
+.baimo_web
