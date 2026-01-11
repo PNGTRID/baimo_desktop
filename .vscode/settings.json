@@ -1,0 +1,32 @@
+{
+  // Rust 分析器配置
+  "[rust]": {
+    "editor.formatOnSave": true
+  },
+
+  // rust-analyzer 配置
+  "rust-analyzer.lru.capacity": 256,
+  "rust-analyzer.checkOnSave.command": "clippy",
+
+  // 抑制特定警告的显示
+  "rust-analyzer.diagnostics.disabled": [
+    "unused-imports",
+    "dead-code",
+    "mismatched-life-time-syntaxes"
+  ],
+
+  // 忽略 Prisma 生成文件的诊断
+  "rust-analyzer.diagnostics.files.excludeDirs": [
+    "**/_prisma.rs",
+    "**/node_modules"
+  ],
+
+  // 隐藏特定的诊断信息
+  "rust-analyzer.diagnostics.warnings.as-hints": {
+    "unused-imports": true,
+    "dead-code": true
+  },
+
+  // C/C++ 配置（如果需要）
+  "C_Cpp.default.configurationProvider": "ms-vscode.cpptools"
+}

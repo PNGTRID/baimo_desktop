@@ -1,0 +1,24 @@
+{
+  "name": "baimo_desktop",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "dev:simple": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "tauri": "cd frontend && npm run tauri",
+    "tauri:dev": "./scripts/tauri-dev.sh",
+    "tauri:build": "cd frontend && npm run tauri:build",
+    "prisma:generate": "cd src-tauri && export PATH=\"$(pwd):$PATH\" && cargo run --bin prisma --features prisma-cli -- generate --schema=../prisma/schema.prisma",
+    "prisma:migrate": "cd prisma && DATABASE_URL=\"file:./dev.db\" npx prisma@3.15.2 migrate dev",
+    "prisma:studio": "cd prisma && npx prisma studio"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "白墨记账系统桌面版",
+  "devDependencies": {
+    "@types/node": "^25.0.5",
+    "prisma": "^7.2.0"
+  }
+}

@@ -1,11 +1,28 @@
+# ============================================================
 # Dependencies
+# ============================================================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Production builds
+# ============================================================
+# Rust / Cargo
+# ============================================================
+/target/
+**/*.rs.bk
+.cargo/
+Cargo.lock
+
+# ============================================================
+# Production builds - Tauri Desktop App
+# ============================================================
 /frontend/dist/
+/src-tauri/target/
+# Tauri bundle output (dmg, app, exe, etc.)
+/src-tauri/target/release/bundle/
+
+# Legacy backend paths (if any)
 /backend/dist/
 /backend/build/
 
@@ -16,12 +33,24 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# ============================================================
 # Database
+# ============================================================
+# SQLite databases
 *.sqlite
-*.db
 *.sqlite3
+*.db
+
+# Prisma
+/prisma/dev.db*
+/prisma/migrations/dev.db*
+/src-tauri/prisma/dev.db*
+
+# Legacy backend paths
 /backend/prisma/dev.db*
 /backend/prisma/migrations/dev.db*
+
+# SQL dumps
 *.sql
 *.dump
 database-backups/
@@ -109,7 +138,9 @@ jspm_packages/
 /frontend/dist-ssr/
 /frontend/*.local
 
+# ============================================================
 # Editor directories and files
+# ============================================================
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -117,8 +148,13 @@ jspm_packages/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
 
+# ============================================================
 # OS generated files
+# ============================================================
 .DS_Store
 .DS_Store?
 ._*
@@ -126,6 +162,7 @@ jspm_packages/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
 # Uploads and media
 /uploads/
@@ -218,11 +255,30 @@ config/production.js
 # Sentry
 .sentryclirc
 
-# Project specific
+# ============================================================
+# Project specific - 白墨记账 Desktop
+# ============================================================
+# AI/MCP tools
 .bmad-core/
 .claude/
 .spec-workflow/
+.playwright-mcp/
+
+# Web版参考代码
+.baimo_web/
+
+# Project documentation (keep relevant docs)
+docs/temp/
 白墨记账系统.prd
 
+# Build artifacts
+*.dmg
+*.app
+*.exe
+*.msi
+*.deb
+*.AppImage
 
-.baimo_web
+# Tauri specific
+/src-tauri/icons/icon.png
+/src-tauri/gen/

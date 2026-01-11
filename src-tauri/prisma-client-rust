@@ -1,0 +1,2 @@
+#\!/bin/bash
+/Users/yuanruiqin/Desktop/AI_DEV/baimo_desktop/src-tauri/target/debug/prisma "$@"
