@@ -24,7 +24,7 @@ import {
   PictureOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import type { Order, CreateOrderItemRequest, OrderPatternItem, Customer, Pattern } from '@/types';
+import type { Order, OrderPatternItem, Customer, Pattern } from '@/types';
 import { OrderApi, CustomerApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
@@ -154,7 +154,7 @@ const itemColumns = [
     title: '颜色',
     dataIndex: 'colorVariantName',
     key: 'colorVariantName',
-    render: (name: string | undefined, record: OrderPatternItem) => {
+    render: (name: string | undefined, _record: OrderPatternItem) => {
       if (!name) return <Text type="secondary">默认</Text>;
       return <span>{name}</span>;
     },

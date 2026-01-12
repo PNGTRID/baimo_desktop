@@ -4,6 +4,7 @@
  */
 
 import html2canvas from 'html2canvas';
+import type { Options } from 'html2canvas';
 import { ClipboardApi } from '@/services/tauriApi';
 
 /**
@@ -14,7 +15,7 @@ import { ClipboardApi } from '@/services/tauriApi';
  */
 export async function copyElementAsImage(
   elementId: string,
-  options: html2canvas.Options = {}
+  options?: Partial<Options>
 ): Promise<boolean> {
   try {
     const element = document.getElementById(elementId);
@@ -24,7 +25,7 @@ export async function copyElementAsImage(
     }
 
     // 默认配置
-    const defaultOptions: html2canvas.Options = {
+    const defaultOptions: Partial<Options> = {
       backgroundColor: '#ffffff',
       scale: 2, // 高清
       logging: false,
@@ -69,7 +70,7 @@ export async function copyElementAsImage(
 export async function downloadElementAsImage(
   elementId: string,
   filename = 'image',
-  options: html2canvas.Options = {}
+  options?: Partial<Options>
 ): Promise<boolean> {
   try {
     const element = document.getElementById(elementId);
@@ -79,7 +80,7 @@ export async function downloadElementAsImage(
     }
 
     // 默认配置
-    const defaultOptions: html2canvas.Options = {
+    const defaultOptions: Partial<Options> = {
       backgroundColor: '#ffffff',
       scale: 2,
       logging: false,
@@ -126,7 +127,7 @@ export async function downloadElementAsImage(
  */
 export async function elementToDataUrl(
   elementId: string,
-  options: html2canvas.Options = {}
+  options?: Partial<Options>
 ): Promise<string | null> {
   try {
     const element = document.getElementById(elementId);
@@ -136,7 +137,7 @@ export async function elementToDataUrl(
     }
 
     // 默认配置
-    const defaultOptions: html2canvas.Options = {
+    const defaultOptions: Partial<Options> = {
       backgroundColor: '#ffffff',
       scale: 2,
       logging: false,

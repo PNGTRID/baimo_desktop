@@ -558,10 +558,8 @@ pub async fn import_data(
 
 /// 获取数据库文件路径
 #[tauri::command]
-pub async fn get_database_path() -> Result<String, String> {
-    Ok(std::env::current_dir()
-       .map_err(|e| format!("获取当前目录失败: {}", e))?
-       .join("prisma/dev.db")
+pub async fn get_database_path(db: State<'_, Database>) -> Result<String, String> {
+    Ok(db.path()
        .to_string_lossy()
        .to_string())
 }

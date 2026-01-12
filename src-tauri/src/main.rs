@@ -35,10 +35,46 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // 初始化数据库服务
-            // 注意：Tauri 工作目录是 src-tauri，所以需要使用 ../prisma/dev.db
-            let db_path = PathBuf::from("../prisma/dev.db");
+            // 获取应用数据目录
+            let app_data_dir = app.path().app_data_dir()
+                .expect("Failed to get app data directory");
+
+            // 确保数据目录存在
+            std::fs::create_dir_all(&app_data_dir)
+                .expect("Failed to create app data directory");
+
+            let db_path = app_data_dir.join("baimo.db");
+
+            // 如果数据库不存在，尝试从开发环境复制
+            if !db_path.exists() {
+                // 尝试从开发环境复制数据库
+                let dev_db_path = PathBuf::from("../prisma/dev.db");
+                if dev_db_path.exists() {
+                    std::fs::copy(&dev_db_path, &db_path)
+                        .expect("Failed to copy development database");
+                    println!("[启动] 已从开发环境复制数据库");
+                } else {
+                    println!("[启动] 警告: 未找到开发数据库，新数据库将被创建");
+                }
+            }
+
             let db = Database::new(db_path).expect("Failed to initialize database");
             app.manage(db.clone());
+
+            // 打印数据库路径用于调试
+            println!("[启动] 数据库路径: {}", db.path().display());
+
+            // 检查数据库是否已初始化（检查关键表是否存在）
+            let table_exists: Result<Option<bool>, _> = db.sqlite().query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='customers'",
+                &[],
+                |row| row.get(0)
+            );
+
+            let is_initialized = table_exists.is_ok() && table_exists.unwrap().unwrap_or(false);
+            if !is_initialized {
+                println!("[启动] 数据库未初始化，正在准备...");
+            }
 
             // 初始化默认配置（如果不存在）
             println!("[启动] 正在初始化默认配置...");
@@ -51,7 +87,12 @@ pub fn run() {
                     }
                 }
                 Err(e) => {
-                    eprintln!("[启动] 初始化配置失败: {}", e);
+                    // 如果表不存在，这是首次运行
+                    if e.contains("no such table") {
+                        println!("[启动] 首次运行，数据库已准备就绪");
+                    } else {
+                        eprintln!("[启动] 初始化配置失败: {}", e);
+                    }
                 }
             }
             println!("[启动] 默认配置初始化完成");

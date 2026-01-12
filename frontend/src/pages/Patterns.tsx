@@ -1979,8 +1979,10 @@ export default function Patterns({ onNavigate }: PatternsProps) {
             <Select
               placeholder="选择父文件夹（留空为根文件夹）"
               allowClear
-              treeNodeFilterProp="title"
               showSearch
+              filterOption={(input, option) =>
+                (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+              }
               options={[
                 { label: '根文件夹', value: null },
                 ...flattenFolderTree(folderTree),

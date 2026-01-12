@@ -760,7 +760,7 @@ export default function Settings() {
                       <Card>
                         <Statistic
                           title="统计周期"
-                          value={logStats.periodDays || 30}
+                          value={(logStats.periodDays as number) || 30}
                           suffix="天"
                         />
                       </Card>

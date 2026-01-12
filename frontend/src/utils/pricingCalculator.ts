@@ -116,7 +116,6 @@ export class PricingCalculator {
       // 从系统配置获取默认值
       const config = useStore.getState().config;
       const defaultBleedHeightCm = config.defaultBleedHeight;
-      const defaultBleedHeightMm = defaultBleedHeightCm * 10; // 转换为毫米
 
       // 计算单价
       const priceResult = this.calculatePatternUnitPrice({

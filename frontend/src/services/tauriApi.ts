@@ -579,7 +579,7 @@ export const SettingsApi = {
    * 更新或插入配置
    */
   async upsert(config: AppConfig): Promise<AppConfig> {
-    return await safeInvoke<AppConfig>('upsert_config', config as Record<string, unknown>);
+    return await safeInvoke<AppConfig>('upsert_config', config as unknown as Record<string, unknown>);
   },
 
   /**

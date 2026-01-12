@@ -8,12 +8,9 @@ import { useState, useEffect } from 'react';
 import {
   Modal,
   Radio,
-  Button,
   App,
-  Card,
   Space,
   Tag,
-  Divider,
   Select,
   InputNumber,
   Typography,
@@ -21,7 +18,7 @@ import {
   Spin,
   Image,
 } from 'antd';
-import { PlusOutlined, ShoppingCartOutlined, FileImageOutlined } from '@ant-design/icons';
+import { ShoppingCartOutlined, FileImageOutlined } from '@ant-design/icons';
 import { OrderApi, PatternApi, CustomerApi, PatternColorApi } from '@/services/tauriApi';
 import type { Order, Pattern, PatternColor, PricingMode, Customer } from '@/types';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
@@ -56,7 +53,6 @@ export default function AddOrderItemModal({
   const [pattern, setPattern] = useState<Pattern | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [customers, setCustomers] = useState<Customer[]>([]); // 客户列表
-  const [colorVariants, setColorVariants] = useState<PatternColor[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewImage, setPreviewImage] = useState<string>(''); // 图案预览图
@@ -144,8 +140,6 @@ export default function AddOrderItemModal({
         try {
           const variants = await PatternColorApi.getByPatternId(preselectedPattern.id);
           if (variants.length > 0) {
-            setColorVariants(variants);
-
             // 初始化颜色变体的数量（默认为0）
             const initialQuantities = new Map<string, ColorVariantWithQuantity>();
             variants.forEach((v) => {
@@ -159,7 +153,6 @@ export default function AddOrderItemModal({
             setVariantQuantities(initialQuantities);
           } else {
             // 没有颜色变体，添加一个默认的图案项
-            setColorVariants([]);
             const defaultQuantities = new Map<string, ColorVariantWithQuantity>();
             defaultQuantities.set('default', {
               colorVariant: {
@@ -181,7 +174,6 @@ export default function AddOrderItemModal({
         } catch (error) {
           console.log('该图案暂无颜色变体');
           // 没有颜色变体，添加一个默认的图案项
-          setColorVariants([]);
           const defaultQuantities = new Map<string, ColorVariantWithQuantity>();
           defaultQuantities.set('default', {
             colorVariant: {
