@@ -71,7 +71,6 @@ interface EnhancedPatternSelectorProps {
   mode: PricingMode;
   isMobile?: boolean;
   customerUnitPrice?: number;
-  customerId?: string;
   customerName?: string;
   allowMultiple?: boolean; // 新增多选模式开关
 }
@@ -87,7 +86,6 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
   mode,
   isMobile = false,
   customerUnitPrice = 18,
-  customerId,
   customerName,
   allowMultiple = false,
 }) => {
@@ -193,12 +191,8 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
       );
     }
 
-    // 排序：激活的在前
-    return filtered.sort((a, b) => {
-      if (a.isActive && !b.isActive) return -1;
-      if (!a.isActive && b.isActive) return 1;
-      return 0;
-    });
+    // 移除基于 isActive 的排序（Pattern 类型已无此字段）
+    return filtered;
   };
 
   // 设置当前选中的图案
@@ -501,9 +495,6 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
                     <FormatPainterOutlined style={{ fontSize: 10, color: '#1890ff' }} />
                   </Badge>
                 )}
-                <Tag color={pattern.isActive ? 'green' : 'default'} style={{ fontSize: 9, padding: '0 4px', margin: 0 }}>
-                  {pattern.isActive ? '启用' : '禁用'}
-                </Tag>
               </Space>
             </div>
 
@@ -706,13 +697,8 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
                     dataIndex: 'name',
                     key: 'name',
                     width: 150,
-                    render: (name: string, record: PatternWithVariants) => (
-                      <div>
-                        <div style={{ fontWeight: 500 }}>{name}</div>
-                        {!record.isActive && (
-                          <Tag color="default" style={{ fontSize: 9, marginTop: 2 }}>禁用</Tag>
-                        )}
-                      </div>
+                    render: (name: string) => (
+                      <div style={{ fontWeight: 500 }}>{name}</div>
                     ),
                   },
                   {

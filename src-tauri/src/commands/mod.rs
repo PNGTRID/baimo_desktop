@@ -3,6 +3,12 @@ pub mod customer;
 // 文件对话框（替代 dialog 插件）
 pub mod file_dialog;
 
+// 网站操作
+pub mod website;
+
+// 剪贴板操作
+pub mod clipboard;
+
 // Dashboard 统计
 pub mod stats;
 
@@ -29,3 +35,6 @@ pub mod tiff;
 
 // 种子数据初始化
 pub mod seed_data;
+
+// 数据管理
+pub mod backup;

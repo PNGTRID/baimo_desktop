@@ -175,22 +175,22 @@ export const PatternApi = {
   async update(
     id: string,
     name?: string,
+    code?: string,
     actualHeight?: number,
     bleedHeight?: number,
     unitsPerRow?: number,
     rowCount?: number,
-    isActive?: boolean,
     customerId?: string | null,
   ): Promise<Pattern | null> {
     // Tauri 2.0 默认使用 camelCase 参数名（自动从 Rust 的 snake_case 转换）
     const result = await safeInvoke<Pattern | null>('update_pattern', {
       id,
       name,
+      code,
       actualHeight,
       bleedHeight,
       unitsPerRow,
       rowCount,
-      isActive,
       // 使用空字符串表示清除客户，undefined 表示不更新
       customerId: customerId === null ? '' : customerId,
     });
@@ -549,6 +549,13 @@ export const FinancialApi = {
       endDate,
     });
   },
+
+  /**
+   * 为历史订单补充财务记录
+   */
+  async migrateOrderRecords(): Promise<string> {
+    return await safeInvoke<string>('migrate_order_financial_records');
+  },
 };
 
 // ============ 应用设置相关 ============
@@ -572,7 +579,7 @@ export const SettingsApi = {
    * 更新或插入配置
    */
   async upsert(config: AppConfig): Promise<AppConfig> {
-    return await safeInvoke<AppConfig>('upsert_config', config);
+    return await safeInvoke<AppConfig>('upsert_config', config as Record<string, unknown>);
   },
 
   /**
@@ -587,6 +594,13 @@ export const SettingsApi = {
    */
   async deleteConfig(key: string): Promise<boolean> {
     return await safeInvoke<boolean>('delete_config', { key });
+  },
+
+  /**
+   * 初始化默认应用配置
+   */
+  async initializeDefaultConfigs(): Promise<AppConfig[]> {
+    return await safeInvoke<AppConfig[]>('initialize_default_configs');
   },
 
   /**
@@ -690,6 +704,44 @@ export const SystemLogApi = {
   },
 };
 
+// ============ 数据管理相关 ============
+export const BackupApi = {
+  /**
+   * 导出所有数据为 JSON
+   */
+  async exportData(): Promise<string> {
+    return await safeInvoke<string>('export_data');
+  },
+
+  /**
+   * 导入 JSON 数据
+   */
+  async importData(jsonData: string): Promise<string> {
+    return await safeInvoke<string>('import_data', { jsonData });
+  },
+
+  /**
+   * 获取数据库文件路径
+   */
+  async getDatabasePath(): Promise<string> {
+    return await safeInvoke<string>('get_database_path');
+  },
+
+  /**
+   * 备份数据库文件
+   */
+  async backupDatabase(backupPath: string): Promise<string> {
+    return await safeInvoke<string>('backup_database', { backupPath });
+  },
+
+  /**
+   * 清空所有业务数据（危险操作）
+   */
+  async clearAllData(): Promise<string> {
+    return await safeInvoke<string>('clear_all_data');
+  },
+};
+
 /**
  * 文件对话框 API（替代 dialog 插件）
  */
@@ -714,5 +766,66 @@ export const FileDialogApi = {
     return await safeInvoke<string | null>('open_folder_dialog', {
       title: options?.title,
     });
+  },
+
+  /**
+   * 保存文件对话框
+   */
+  async saveFile(options?: {
+    title?: string;
+    defaultName?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }): Promise<string | null> {
+    return await safeInvoke<string | null>('save_file_dialog', {
+      title: options?.title,
+      defaultName: options?.defaultName,
+      filters: options?.filters,
+    });
+  },
+
+  /**
+   * 保存文本内容到文件
+   */
+  async saveTextFile(path: string, content: string): Promise<void> {
+    await safeInvoke<void>('save_text_file', { path, content });
+  },
+
+  /**
+   * 读取文本文件内容
+   */
+  async readTextFile(path: string): Promise<string> {
+    return await safeInvoke<string>('read_text_file', { path });
+  },
+};
+
+/**
+ * 剪贴板 API（Tauri 原生）
+ */
+export const ClipboardApi = {
+  /**
+   * 写入图片到剪贴板
+   * @param imageBytes PNG 图片的字节数组（base64 解码后）
+   */
+  async writeImage(imageBytes: number[]): Promise<void> {
+    await safeInvoke<void>('write_image_to_clipboard', { imageBytes });
+  },
+
+  /**
+   * 写入文本到剪贴板
+   */
+  async writeText(text: string): Promise<void> {
+    await safeInvoke<void>('write_text_to_clipboard', { text });
+  },
+};
+
+/**
+ * 网站 API
+ */
+export const WebsiteApi = {
+  /**
+   * 打开官网
+   */
+  async openWebsite(): Promise<void> {
+    await safeInvoke<void>('open_website');
   },
 };

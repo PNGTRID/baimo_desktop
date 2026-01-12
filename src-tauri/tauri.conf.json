@@ -22,6 +22,7 @@
         "minHeight": 768
       }
     ],
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     }
@@ -44,6 +45,7 @@
     },
     "fs": {
       "requireLiteralLeadingDot": false
-    }
+    },
+    "opener": {}
   }
 }

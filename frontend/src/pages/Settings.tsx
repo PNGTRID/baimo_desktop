@@ -26,15 +26,22 @@ import {
   EditOutlined,
   DeleteOutlined,
   ClearOutlined,
+  ExportOutlined,
+  ImportOutlined,
+  ExclamationCircleOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import type { ColorPreset, SystemLog } from '@/types';
-import { SettingsApi, ColorPresetApi, SystemLogApi } from '@/services/tauriApi';
+import { SettingsApi, ColorPresetApi, SystemLogApi, FinancialApi, BackupApi, WebsiteApi, FileDialogApi } from '@/services/tauriApi';
+import { useStore } from '@/store/useStore';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 export default function Settings() {
   const { message } = App.useApp();
+  const { loadConfig } = useStore();
+
   // ========== 配置管理状态 ==========
   const [configForm] = Form.useForm();
   const [configsLoading, setConfigsLoading] = useState(false);
@@ -60,7 +67,22 @@ export default function Settings() {
   const loadConfigs = async () => {
     try {
       setConfigsLoading(true);
-      const data = await SettingsApi.getAllConfigs();
+      let data = await SettingsApi.getAllConfigs();
+
+      // 如果没有配置数据，初始化默认配置
+      if (data.length === 0) {
+        console.log('[配置] 表为空，正在初始化默认配置...');
+        message.loading('正在初始化默认配置...', 0);
+        try {
+          data = await SettingsApi.initializeDefaultConfigs();
+          message.destroy();
+          message.success(`已初始化 ${data.length} 个默认配置`);
+        } catch (error) {
+          message.destroy();
+          console.error('[配置] 初始化失败:', error);
+          message.warning('默认配置初始化失败');
+        }
+      }
 
       // 设置表单初始值
       const formValues: Record<string, string> = {};
@@ -159,6 +181,8 @@ export default function Settings() {
       await SettingsApi.batchUpdateConfigs(configsToUpdate);
       message.success('配置保存成功');
       loadConfigs();
+      // 重新加载配置以更新全局状态
+      loadConfig();
     } catch (error) {
       message.error('保存配置失败: ' + error);
     }
@@ -233,6 +257,186 @@ export default function Settings() {
     } catch (error) {
       message.error('清理日志失败: ' + error);
     }
+  };
+
+  // ========== 数据迁移处理 ==========
+  const handleMigrateOrderRecords = async () => {
+    Modal.confirm({
+      title: '补充历史订单财务记录',
+      content: '将为所有已确认订单创建对应的财务记录，是否继续？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          message.loading('正在迁移数据...', 0);
+          const result = await FinancialApi.migrateOrderRecords();
+          message.destroy();
+          message.success(result);
+          loadLogs();
+        } catch (error) {
+          message.destroy();
+          message.error('迁移失败: ' + error);
+        }
+      },
+    });
+  };
+
+  // ========== 打开官网 ==========
+  const handleOpenWebsite = async () => {
+    try {
+      await WebsiteApi.openWebsite();
+    } catch (error) {
+      console.error('Failed to open website:', error);
+    }
+  };
+
+  // ========== 数据管理处理 ==========
+  const handleExportData = async () => {
+    try {
+      message.loading('正在导出数据...', 0);
+      const jsonData = await BackupApi.exportData();
+      message.destroy();
+
+      // 使用文件对话框保存
+      const filePath = await FileDialogApi.saveFile({
+        title: '导出数据',
+        defaultName: `baimo_backup_${dayjs().format('YYYYMMDD_HHmmss')}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      if (filePath) {
+        await FileDialogApi.saveTextFile(filePath, jsonData);
+        message.success('数据导出成功');
+      } else {
+        message.info('已取消导出');
+      }
+    } catch (error) {
+      message.destroy();
+      message.error('导出失败: ' + error);
+    }
+  };
+
+  const handleImportData = async () => {
+    try {
+      // 使用文件对话框选择文件
+      const selected = await FileDialogApi.openFile({
+        title: '选择要导入的数据文件',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      if (selected) {
+        // 读取文件内容
+        const contents = await FileDialogApi.readTextFile(selected);
+
+        Modal.confirm({
+          title: '确认导入',
+          content: '导入数据将覆盖现有数据，是否继续？',
+          okText: '确认导入',
+          okButtonProps: { danger: true },
+          onOk: async () => {
+            try {
+              message.loading('正在导入数据...', 0);
+              const result = await BackupApi.importData(contents);
+              message.destroy();
+              message.success(result);
+              // 刷新所有数据
+              loadConfigs();
+              loadColorPresets();
+              loadLogs();
+            } catch (error) {
+              message.destroy();
+              message.error('导入失败: ' + error);
+            }
+          },
+        });
+      }
+    } catch (error) {
+      message.error('选择文件失败: ' + error);
+    }
+  };
+
+  const handleBackupDatabase = async () => {
+    try {
+      // 使用文件系统 API 保存文件
+      const filePath = await BackupApi.getDatabasePath();
+      message.info(`数据库位置: ${filePath}\n请手动复制文件进行备份`);
+    } catch (error) {
+      message.error('获取数据库路径失败: ' + error);
+    }
+  };
+
+  const handleClearData = async () => {
+    Modal.confirm({
+      title: '⚠️ 危险操作警告',
+      icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+      content: (
+        <div>
+          <p style={{ marginBottom: 16, fontWeight: 'bold', color: '#ff4d4f' }}>
+            此操作将清空所有业务数据，包括：
+          </p>
+          <ul style={{ marginLeft: 20, marginBottom: 16 }}>
+            <li>所有客户信息</li>
+            <li>所有订单和订单项</li>
+            <li>所有图案和产品</li>
+            <li>所有财务记录</li>
+          </ul>
+          <p style={{ color: '#ff4d4f', fontWeight: 'bold' }}>
+            此操作不可恢复！建议先备份数据。
+          </p>
+          <p>输入 "CLEAR" 以确认清空操作：</p>
+        </div>
+      ),
+      okText: '确认清空',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => {
+        return new Promise<void>((resolve, reject) => {
+          let inputText = '';
+          Modal.confirm({
+            title: '二次确认',
+            content: (
+              <div>
+                <p>请输入 <code style={{ background: '#f0f0f0', padding: '2px 6px' }}>CLEAR</code> 以确认清空所有数据：</p>
+                <Input
+                  placeholder="请输入 CLEAR"
+                  onChange={(e) => { inputText = e.target.value; }}
+                  autoFocus
+                />
+              </div>
+            ),
+            okText: '确认',
+            okButtonProps: { danger: true },
+            cancelText: '取消',
+            onOk: async () => {
+              if (inputText !== 'CLEAR') {
+                message.error('输入错误，操作已取消');
+                reject();
+                return;
+              }
+
+              try {
+                message.loading('正在清空数据...', 0);
+                const result = await BackupApi.clearAllData();
+                message.destroy();
+                message.success(result);
+                // 刷新所有数据
+                loadConfigs();
+                loadColorPresets();
+                loadLogs();
+                resolve();
+              } catch (error) {
+                message.destroy();
+                message.error('清空失败: ' + error);
+                reject();
+              }
+            },
+            onCancel: () => {
+              reject();
+            },
+          });
+        });
+      },
+    });
   };
 
   // ========== 表格列定义 ==========
@@ -349,20 +553,41 @@ export default function Settings() {
                 >
                   <Form form={configForm} layout="vertical">
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col span={8}>
                         <Form.Item
-                          label="公司名称"
+                          label="公司完整名称"
                           name="company_name"
                           extra="用于发票和报表显示"
                         >
-                          <Input placeholder="请输入公司名称" />
+                          <Input placeholder="请输入公司完整名称" />
                         </Form.Item>
                       </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          label="公司简称"
+                          name="company_short_name"
+                          extra="用于界面显示"
+                        >
+                          <Input placeholder="请输入公司简称" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          label="公司英文名称"
+                          name="company_english_name"
+                          extra="用于英文显示"
+                        >
+                          <Input placeholder="请输入公司英文名称" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    <Row gutter={16}>
                       <Col span={12}>
                         <Form.Item
                           label="默认每平方单价"
                           name="default_price_per_sq"
-                          extra="单位：元/平方米"
+                          extra="单位：元/平方米，新客户的默认单价"
                         >
                           <InputNumber
                             placeholder="请输入默认单价"
@@ -372,9 +597,6 @@ export default function Settings() {
                           />
                         </Form.Item>
                       </Col>
-                    </Row>
-
-                    <Row gutter={16}>
                       <Col span={12}>
                         <Form.Item
                           label="默认信用额度"
@@ -389,7 +611,39 @@ export default function Settings() {
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                    </Row>
+
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Form.Item
+                          label="默认出血高度"
+                          name="default_bleed_height"
+                          extra="单位：厘米"
+                        >
+                          <InputNumber
+                            placeholder="请输入默认出血高度"
+                            style={{ width: '100%' }}
+                            min={0}
+                            precision={1}
+                            step={0.1}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          label="价格公式常数"
+                          name="pricing_formula_constant"
+                          extra="当前值：1600（行业标准）"
+                        >
+                          <InputNumber
+                            placeholder="请输入公式常数"
+                            style={{ width: '100%' }}
+                            min={1}
+                            precision={0}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
                         <Form.Item
                           label="日志保留天数"
                           name="log_retention_days"
@@ -404,10 +658,52 @@ export default function Settings() {
                         </Form.Item>
                       </Col>
                     </Row>
+
+                    <Row gutter={16}>
+                      <Col span={24}>
+                        <Form.Item
+                          label="价格计算公式"
+                          extra="图案单价 = 客户每平方单价 ÷ (价格公式常数 ÷ (实际高度 + 出血高度) × 每行个数)"
+                        >
+                          <Input.TextArea
+                            value="单价 = 客户单价 ÷ (公式常数 ÷ (实际高度 + 出血高度) × 每行个数)"
+                            readOnly
+                            style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
                   </Form>
                 </Card>
 
-                <Card title="应用信息">
+                <Card
+                  title="应用信息"
+                  extra={
+                    <Button
+                      icon={<GlobalOutlined />}
+                      onClick={handleOpenWebsite}
+                      style={{
+                        fontWeight: 600,
+                        backgroundColor: '#ff6b35',
+                        borderColor: '#ff6b35',
+                        color: '#fff',
+                        fontSize: 18,
+                        padding: '6px 20px',
+                        height: 'auto',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#ff5722';
+                        e.currentTarget.style.borderColor = '#ff5722';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#ff6b35';
+                        e.currentTarget.style.borderColor = '#ff6b35';
+                      }}
+                    >
+                      PNG部落，AI生成高清图案
+                    </Button>
+                  }
+                >
                   <Descriptions column={2} bordered>
                     <Descriptions.Item label="应用名称">白墨记账系统</Descriptions.Item>
                     <Descriptions.Item label="版本">0.1.0</Descriptions.Item>
@@ -502,6 +798,7 @@ export default function Settings() {
                   title="系统日志"
                   extra={
                     <Space>
+                      <Button onClick={handleMigrateOrderRecords}>补充历史订单财务记录</Button>
                       <Popconfirm
                         title="确认清理"
                         description="确定要清理 90 天前的日志吗？"
@@ -531,6 +828,74 @@ export default function Settings() {
                     }}
                   />
                 </Card>
+              </>
+            ),
+          },
+          {
+            key: 'data',
+            label: '数据管理',
+            children: (
+              <>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Card title="数据导出" extra={<Tag color="blue">JSON 格式</Tag>}>
+                      <p style={{ marginBottom: 16 }}>
+                        将所有业务数据导出为 JSON 文件，可用于备份和迁移
+                      </p>
+                      <Button icon={<ExportOutlined />} onClick={handleExportData}>
+                        导出数据 (JSON)
+                      </Button>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col span={24}>
+                    <Card title="数据导入" extra={<Tag color="orange">JSON 格式</Tag>}>
+                      <p style={{ marginBottom: 16 }}>
+                        从 JSON 文件导入数据（将覆盖现有数据）
+                      </p>
+                      <Button icon={<ImportOutlined />} onClick={handleImportData} danger>
+                        导入数据 (JSON)
+                      </Button>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col span={24}>
+                    <Card title="数据库备份">
+                      <p style={{ marginBottom: 16 }}>
+                        直接备份 SQLite 数据库文件（.db），快速完整备份
+                      </p>
+                      <Button icon={<SaveOutlined />} onClick={handleBackupDatabase}>
+                        查看数据库位置
+                      </Button>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col span={24}>
+                    <Card
+                      title="清空数据"
+                      extra={<Tag color="red">危险操作</Tag>}
+                      style={{ borderColor: '#ff4d4f' }}
+                    >
+                      <p style={{ marginBottom: 16 }}>
+                        <Text type="danger">
+                          清空所有业务数据（客户、订单、图案、财务记录等）
+                        </Text>
+                      </p>
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+                        ⚠️ 此操作不可恢复，建议先备份数据
+                      </Text>
+                      <Button icon={<DeleteOutlined />} danger onClick={handleClearData}>
+                        清空所有数据
+                      </Button>
+                    </Card>
+                  </Col>
+                </Row>
               </>
             ),
           },

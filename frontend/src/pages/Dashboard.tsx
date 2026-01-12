@@ -16,6 +16,7 @@ import {
   DollarOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
+import { useStore } from '@/store/useStore';
 import {
   LineChart,
   Line,
@@ -41,6 +42,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onNavigate }: DashboardProps) {
+  const { config } = useStore();
   const [stats, setStats] = useState<DashboardStats>({
     customersCount: 0,
     patternsCount: 0,
@@ -122,7 +124,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
       {/* 欢迎标题 */}
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>
-          欢迎使用PNG部落记账系统
+          欢迎使用{config.companyShortName}记账系统
         </h2>
         <p style={{ color: '#666', margin: 0 }}>
           实时掌握您的业务数据，高效管理印花订单
@@ -136,8 +138,8 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
             <Statistic
               title="客户总数"
               value={stats.customersCount}
-              prefix={<UserOutlined style={{ color: '#1a5f4c' }} />}
-              styles={{ content: { color: '#1a5f4c', fontWeight: 600 } }}
+              prefix={<UserOutlined style={{ color: '#0ea5e9' }} />}
+              styles={{ content: { color: '#0ea5e9', fontWeight: 600 } }}
               loading={loading}
             />
           </Card>
@@ -227,9 +229,9 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                       yAxisId="left"
                       type="monotone"
                       dataKey="收入"
-                      stroke="#1a5f4c"
+                      stroke="#0ea5e9"
                       strokeWidth={2.5}
-                      dot={{ fill: '#1a5f4c', r: 4 }}
+                      dot={{ fill: '#0ea5e9', r: 4 }}
                       activeDot={{ r: 6 }}
                     />
                     <Line
@@ -270,7 +272,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                     outerRadius={75}
                     fill="#8884d8"
                     dataKey="value"
@@ -324,7 +326,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 13 }} />
-                  <Bar dataKey="面积" fill="#1a5f4c" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="面积" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>

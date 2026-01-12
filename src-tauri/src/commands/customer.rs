@@ -2,6 +2,26 @@ use crate::models::{CreateCustomerRequest, Customer, UpdateCustomerRequest};
 use crate::services::Database;
 use tauri::State;
 
+// ============================================================
+// 辅助函数
+// ============================================================
+
+/// 从数据库获取配置值（字符串）
+fn get_config_value(db: &Database, key: &str) -> Option<String> {
+    db.sqlite().query_row(
+        "SELECT value FROM app_configs WHERE key = ?1",
+        &[&key as &dyn rusqlite::ToSql],
+        |row| row.get(0),
+    ).ok().flatten()
+}
+
+/// 从数据库获取配置值（浮点数）
+fn get_config_f64(db: &Database, key: &str, default: f64) -> f64 {
+    get_config_value(db, key)
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(default)
+}
+
 // 获取所有客户
 #[tauri::command]
 pub async fn get_customers(db: State<'_, Database>) -> Result<Vec<Customer>, String> {
@@ -10,6 +30,8 @@ pub async fn get_customers(db: State<'_, Database>) -> Result<Vec<Customer>, Str
          FROM customers ORDER BY createdAt DESC",
         &[],
         |row: &rusqlite::Row| {
+            let created_at_ts: i64 = row.get(7)?;
+            let updated_at_ts: i64 = row.get(8)?;
             Ok(Customer {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -18,8 +40,12 @@ pub async fn get_customers(db: State<'_, Database>) -> Result<Vec<Customer>, Str
                 unit_price: row.get(4)?,
                 notes: row.get(5)?,
                 is_active: row.get(6)?,
-                created_at: row.get::<_, i64>(7)?.to_string(),
-                updated_at: row.get::<_, i64>(8)?.to_string(),
+                created_at: chrono::DateTime::from_timestamp(created_at_ts, 0)
+                    .unwrap_or_else(|| chrono::Utc::now())
+                    .to_rfc3339(),
+                updated_at: chrono::DateTime::from_timestamp(updated_at_ts, 0)
+                    .unwrap_or_else(|| chrono::Utc::now())
+                    .to_rfc3339(),
             })
         },
     ).map_err(|e| format!("Failed to fetch customers: {:?}", e))
@@ -36,6 +62,8 @@ pub async fn get_customer_by_id(
          FROM customers WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row: &rusqlite::Row| {
+            let created_at_ts: i64 = row.get(7)?;
+            let updated_at_ts: i64 = row.get(8)?;
             Ok(Customer {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -44,8 +72,12 @@ pub async fn get_customer_by_id(
                 unit_price: row.get(4)?,
                 notes: row.get(5)?,
                 is_active: row.get(6)?,
-                created_at: row.get::<_, i64>(7)?.to_string(),
-                updated_at: row.get::<_, i64>(8)?.to_string(),
+                created_at: chrono::DateTime::from_timestamp(created_at_ts, 0)
+                    .unwrap_or_else(|| chrono::Utc::now())
+                    .to_rfc3339(),
+                updated_at: chrono::DateTime::from_timestamp(updated_at_ts, 0)
+                    .unwrap_or_else(|| chrono::Utc::now())
+                    .to_rfc3339(),
             })
         },
     );
@@ -67,6 +99,14 @@ pub async fn create_customer(
     let folder_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
 
+    // 获取默认配置
+    let default_price_per_sq = get_config_f64(&db, "default_price_per_sq", 0.0);
+    let default_credit_limit = get_config_f64(&db, "default_credit_limit", 0.0);
+
+    // 使用请求中的值，如果没有则使用默认配置
+    let final_unit_price = request.unit_price.unwrap_or(default_price_per_sq);
+    let final_credit_limit = request.credit_limit.unwrap_or(default_credit_limit);
+
     // 使用事务确保原子性：同时创建客户和文件夹
     {
         let conn = db.sqlite().connection();
@@ -82,8 +122,8 @@ pub async fn create_customer(
                 &customer_id,
                 &request.name,
                 request.balance.unwrap_or(0.0),
-                request.credit_limit.unwrap_or(0.0),
-                request.unit_price.unwrap_or(0.0),
+                final_credit_limit,
+                final_unit_price,
                 request.notes.as_deref().unwrap_or(""),
                 true, // isActive
                 now,

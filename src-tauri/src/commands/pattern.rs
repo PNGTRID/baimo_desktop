@@ -9,6 +9,21 @@ use walkdir::WalkDir;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
+// ============================================================
+// 辅助函数
+// ============================================================
+
+/// 从数据库获取配置值（浮点数）
+fn get_config_f64(db: &Database, key: &str, default: f64) -> f64 {
+    db.sqlite().query_row(
+        "SELECT value FROM app_configs WHERE key = ?1",
+        &[&key as &dyn rusqlite::ToSql],
+        |row| row.get::<_, String>(0),
+    ).ok().flatten()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(default)
+}
+
 // 生成图案编号
 fn generate_code() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +39,7 @@ fn generate_code() -> String {
 pub async fn get_patterns(db: State<'_, Database>) -> Result<Vec<Pattern>, String> {
     db.sqlite().query_map(
         "SELECT id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                localFilePath, customerId, folder_id, preview_image, color_type, isActive, createdAt, updatedAt
+                localFilePath, customerId, folder_id, preview_image, color_type, createdAt, updatedAt
          FROM patterns ORDER BY createdAt DESC",
         &[],
         |row: &rusqlite::Row| {
@@ -41,9 +56,8 @@ pub async fn get_patterns(db: State<'_, Database>) -> Result<Vec<Pattern>, Strin
                 folder_id: row.get(9)?,
                 preview_image: row.get(10)?,
                 color_type: row.get(11)?,
-                is_active: row.get(12)?,
-                created_at: row.get::<_, i64>(13)?.to_string(),
-                updated_at: row.get::<_, i64>(14)?.to_string(),
+                created_at: row.get::<_, i64>(12)?.to_string(),
+                updated_at: row.get::<_, i64>(13)?.to_string(),
             })
         },
     ).map_err(|e| format!("Failed to fetch patterns: {:?}", e))
@@ -57,7 +71,7 @@ pub async fn get_pattern_by_id(
 ) -> Result<Option<Pattern>, String> {
     let result = db.sqlite().query_row(
         "SELECT id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                localFilePath, customerId, folder_id, preview_image, color_type, isActive, createdAt, updatedAt
+                localFilePath, customerId, folder_id, preview_image, color_type, createdAt, updatedAt
          FROM patterns WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row: &rusqlite::Row| {
@@ -74,9 +88,8 @@ pub async fn get_pattern_by_id(
                 folder_id: row.get(9)?,
                 preview_image: row.get(10)?,
                 color_type: row.get(11)?,
-                is_active: row.get(12)?,
-                created_at: row.get::<_, i64>(13)?.to_string(),
-                updated_at: row.get::<_, i64>(14)?.to_string(),
+                created_at: row.get::<_, i64>(12)?.to_string(),
+                updated_at: row.get::<_, i64>(13)?.to_string(),
             })
         },
     );
@@ -140,11 +153,15 @@ pub async fn create_pattern_from_tiff(
     db: State<'_, Database>,
 ) -> Result<Pattern, String> {
     let id = uuid::Uuid::new_v4().to_string();
-    let code = generate_code();
+    // 使用传入的 code，如果没有传入则生成临时占位符（前端会在编辑窗口中修改）
+    let code = request.code.unwrap_or_else(|| format!("TEMP_{}", id[..8].to_string()));
     let now = chrono::Utc::now().timestamp();
 
-    // 尝试生成缩略图（200px 最大边）
-    let preview_image = generate_thumbnail_from_file(&request.local_file_path, 200).ok();
+    // 不生成缩略图，直接保存（前端需要时再从 localFilePath 动态加载）
+    let preview_image: Option<String> = None;
+
+    // 默认每行个数为 2（用户可在编辑窗口修改）
+    let units_per_row = 2;
 
     // 如果提供了 customer_id，自动查找该客户的根文件夹
     let folder_id: Option<String> = if let Some(ref customer_id) = request.customer_id {
@@ -157,6 +174,9 @@ pub async fn create_pattern_from_tiff(
         None
     };
 
+    // 获取默认出血高度配置
+    let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
+
     db.sqlite().execute(
         "INSERT INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
                                localFilePath, customerId, folder_id, preview_image, isActive, createdAt, updatedAt)
@@ -166,9 +186,9 @@ pub async fn create_pattern_from_tiff(
             &request.name,
             &code,
             &request.actual_height,
-            &2.0,  // 默认出血高度 (cm)
-            &10,   // 默认每行个数
-            &10,   // 默认行数
+            &default_bleed_height,       // 使用配置的默认出血高度
+            &units_per_row,               // 每行个数（默认 2）
+            &10,                          // 默认行数
             &Some(request.local_file_path.clone()),
             &request.customer_id,
             &folder_id,
@@ -178,6 +198,8 @@ pub async fn create_pattern_from_tiff(
             &now,
         ],
     ).map_err(|e| format!("Failed to create pattern from tiff: {:?}", e))?;
+
+    eprintln!("[CREATE_PATTERN] 图案创建完成: id={}, code={}, hasPreview={}", id, code, preview_image.is_some());
 
     // 获取刚创建的图案
     get_pattern_by_id(id, db).await.map(|p| p.unwrap())
@@ -189,11 +211,11 @@ pub async fn create_pattern_from_tiff(
 pub async fn update_pattern(
     id: String,
     name: Option<String>,
+    code: Option<String>,
     actual_height: Option<f64>,
     bleed_height: Option<f64>,
     units_per_row: Option<i32>,
     row_count: Option<i32>,
-    is_active: Option<bool>,
     customer_id: Option<String>,  // 空字符串表示清除客户，Some(id) 表示设置，None 表示不更新
     db: State<'_, Database>,
 ) -> Result<Option<Pattern>, String> {
@@ -206,6 +228,10 @@ pub async fn update_pattern(
         if let Some(ref n) = name {
             updates.push("name = ?");
             params.push(Box::new(n.clone()));
+        }
+        if let Some(ref c) = code {
+            updates.push("code = ?");
+            params.push(Box::new(c.clone()));
         }
         if let Some(h) = actual_height {
             updates.push("actualHeight = ?");
@@ -222,10 +248,6 @@ pub async fn update_pattern(
         if let Some(r) = row_count {
             updates.push("rowCount = ?");
             params.push(Box::new(r));
-        }
-        if let Some(a) = is_active {
-            updates.push("isActive = ?");
-            params.push(Box::new(a));
         }
         // 处理 customer_id: 空字符串表示清除，非空表示设置
         // 同时自动同步 folder_id（客户的根文件夹）
@@ -292,42 +314,51 @@ pub async fn delete_pattern(
 }
 
 // 获取图案图片（从本地文件读取并转换为可显示的格式）
+// 注意：这是预览功能，使用快速采样生成 800px 预览图，不处理完整原图
 #[tauri::command]
 pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
     use std::fs;
     use std::io::Cursor;
     use base64::{Engine as _, engine::general_purpose};
 
-    // 读取文件
-    let contents = fs::read(&file_path)
-        .map_err(|e| format!("无法读取图片文件: {}", e))?;
+    eprintln!("[GET_PATTERN_IMAGE] 开始加载预览: path={}", file_path);
+    let start_time = std::time::Instant::now();
 
     // 检查文件扩展名
     let is_tiff = file_path.to_lowercase().ends_with(".tif") ||
                   file_path.to_lowercase().ends_with(".tiff");
 
-    let png_bytes = if is_tiff {
-        // 对于 TIFF 文件，尝试使用 tiff crate 读取
-        convert_tiff_to_png(&contents)?
-    } else {
-        // 其他格式，尝试用 image crate 直接加载
-        let img = image::load_from_memory_with_format(&contents, image::ImageFormat::Tiff)
-            .or_else(|_| image::load_from_memory_with_format(&contents, image::ImageFormat::Png))
-            .or_else(|_| image::load_from_memory_with_format(&contents, image::ImageFormat::Jpeg))
-            .map_err(|e| format!("无法识别的图片格式: {}", e))?;
+    if is_tiff {
+        eprintln!("[GET_PATTERN_IMAGE] 检测到TIFF格式，使用快速采样(800px)");
+        // 对于 TIFF 文件，使用快速采样生成预览图（800px）
+        // 这样可以处理所有格式的 TIFF，包括 5 通道 CMYK
+        let result = generate_fast_thumbnail(&file_path, 800);
+        let elapsed = start_time.elapsed();
+        match &result {
+            Ok(data) => eprintln!("[GET_PATTERN_IMAGE] TIFF加载成功: 耗时={}ms, size={} bytes", elapsed.as_millis(), data.len()),
+            Err(e) => eprintln!("[GET_PATTERN_IMAGE] TIFF加载失败: 耗时={}ms, error={}", elapsed.as_millis(), e),
+        }
+        return result;
+    }
 
-        // 转换为 RGB
-        let rgb_img = img.to_rgb8();
+    // 其他格式，尝试用 image crate 直接加载
+    let contents = fs::read(&file_path)
+        .map_err(|e| format!("无法读取图片文件: {}", e))?;
 
-        // 编码为 PNG
-        let mut bytes = Vec::new();
-        let mut cursor = Cursor::new(&mut bytes);
-        rgb_img.write_to(&mut cursor, image::ImageFormat::Png)
-            .map_err(|e| format!("PNG 编码失败: {}", e))?;
-        bytes
-    };
+    let img = image::load_from_memory_with_format(&contents, image::ImageFormat::Png)
+        .or_else(|_| image::load_from_memory_with_format(&contents, image::ImageFormat::Jpeg))
+        .map_err(|e| format!("无法识别的图片格式: {}", e))?;
+
+    // 转换为 RGB 并编码为 PNG
+    let rgb_img = img.to_rgb8();
+    let mut png_bytes = Vec::new();
+    let mut cursor = Cursor::new(&mut png_bytes);
+    rgb_img.write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|e| format!("PNG 编码失败: {}", e))?;
 
     let base64_string = general_purpose::STANDARD.encode(&png_bytes);
+    let elapsed = start_time.elapsed();
+    eprintln!("[GET_PATTERN_IMAGE] 其他格式加载成功: 耗时={}ms, size={} bytes", elapsed.as_millis(), base64_string.len());
     Ok(format!("data:image/png;base64,{}", base64_string))
 }
 
@@ -747,7 +778,7 @@ fn apply_horizontal_predictor(data: &mut [u8], width: usize, bytes_per_pixel: us
     }
 }
 
-// 生成缩略图（返回 base64 编码的 PNG）
+// 生成缩略图（返回 base64 编码的 JPEG，最快配置）
 fn generate_thumbnail(data: &[u8], max_size: u32) -> Result<String, String> {
     use base64::{Engine as _, engine::general_purpose};
     use std::io::Cursor;
@@ -765,26 +796,511 @@ fn generate_thumbnail(data: &[u8], max_size: u32) -> Result<String, String> {
     let new_w = (orig_w as f32 * scale) as u32;
     let new_h = (orig_h as f32 * scale) as u32;
 
-    // 缩放图片
-    let thumbnail = img.thumbnail(new_w, new_h);
+    // 使用更快的缩放算法（Nearest 代替默认的 Lanczos3）
+    let thumbnail = image::imageops::thumbnail(&img, new_w, new_h);
 
-    // 编码为 PNG
+    // 编码为 JPEG（质量 60，最快速度）
     let mut thumb_bytes = Vec::new();
     let mut cursor = Cursor::new(&mut thumb_bytes);
-    thumbnail.write_to(&mut cursor, image::ImageFormat::Png)
+    thumbnail.write_to(&mut cursor, image::ImageOutputFormat::Jpeg(60))
         .map_err(|e| format!("缩略图编码失败: {}", e))?;
 
     // 返回 base64 数据 URL
     let base64_str = general_purpose::STANDARD.encode(&thumb_bytes);
-    Ok(format!("data:image/png;base64,{}", base64_str))
+    Ok(format!("data:image/jpeg;base64,{}", base64_str))
 }
 
 // 从文件路径生成缩略图
 pub fn generate_thumbnail_from_file(file_path: &str, max_size: u32) -> Result<String, String> {
+    use std::io::Cursor;
+    use base64::{Engine as _, engine::general_purpose};
+
     let contents = std::fs::read(file_path)
         .map_err(|e| format!("读取文件失败: {}", e))?;
 
-    generate_thumbnail(&contents, max_size)
+    // 尝试常规方法
+    match generate_thumbnail(&contents, max_size) {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            // 常规方法失败，尝试使用 ImageMagick
+            match convert_tiff_with_imagemagick(&contents) {
+                Ok(png_data) => {
+                    // ImageMagick 成功，现在缩放
+                    let img = image::load_from_memory(&png_data)
+                        .map_err(|e| format!("ImageMagick 转换后加载失败: {}", e))?;
+
+                    let (orig_w, orig_h) = (img.width(), img.height());
+                    let scale = (max_size as f32 / orig_w.max(orig_h) as f32).min(1.0);
+                    let new_w = (orig_w as f32 * scale) as u32;
+                    let new_h = (orig_h as f32 * scale) as u32;
+
+                    // 使用更快的缩放算法
+                    let thumbnail = image::imageops::thumbnail(&img, new_w, new_h);
+
+                    // 编码为 JPEG（质量 60，最快速度）
+                    let mut thumb_bytes = Vec::new();
+                    let mut cursor = Cursor::new(&mut thumb_bytes);
+                    thumbnail.write_to(&mut cursor, image::ImageOutputFormat::Jpeg(60))
+                        .map_err(|e| format!("缩略图编码失败: {}", e))?;
+
+                    let base64_str = general_purpose::STANDARD.encode(&thumb_bytes);
+                    Ok(format!("data:image/jpeg;base64,{}", base64_str))
+                }
+                Err(im_err) => {
+                    Err(format!("常规方法失败: {}, ImageMagick 也失败: {}", e, im_err))
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 快速缩略图生成（优化版）
+// ============================================================
+
+/// 快速生成缩略图（直接使用完整解码）
+/// 适用于所有 TIFF 文件，包括 5 通道 CMYK
+fn generate_fast_thumbnail(file_path: &str, max_size: u32) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let start_time = std::time::Instant::now();
+    eprintln!("[THUMBNAIL] 开始生成缩略图: file={}, max_size={}", file_path, max_size);
+
+    // 读取文件
+    let mut file = std::fs::File::open(file_path)
+        .map_err(|e| format!("无法打开文件: {}", e))?;
+
+    let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+    eprintln!("[THUMBNAIL] 文件信息: size={} bytes ({} MB)", file_size, file_size / 1024 / 1024);
+
+    // 读取 TIFF 头
+    let mut header = [0u8; 8];
+    file.read_exact(&mut header).map_err(|e| format!("读取文件头失败: {}", e))?;
+
+    // 验证 TIFF 格式
+    let is_little_endian = match &header[0..2] {
+        [b'I', b'I'] => true,
+        [b'M', b'M'] => false,
+        _ => return Err("不是有效的 TIFF 文件".to_string()),
+    };
+
+    eprintln!("[THUMBNAIL] TIFF头解析: endianness={}", if is_little_endian { "Little" } else { "Big" });
+
+    let read_u16 = |bytes: &[u8]| -> u16 {
+        if is_little_endian {
+            u16::from_le_bytes([bytes[0], bytes[1]])
+        } else {
+            u16::from_be_bytes([bytes[0], bytes[1]])
+        }
+    };
+
+    let read_u32 = |bytes: &[u8]| -> u32 {
+        if is_little_endian {
+            u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        } else {
+            u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        }
+    };
+
+    // 读取 IFD 偏移量
+    let ifd_offset = read_u32(&header[4..8]);
+    file.seek(SeekFrom::Start(ifd_offset as u64)).map_err(|e| e.to_string())?;
+
+    // 读取条目数量
+    let mut entry_count_bytes = [0u8; 2];
+    file.read_exact(&mut entry_count_bytes).map_err(|e| e.to_string())?;
+    let entry_count = read_u16(&entry_count_bytes) as usize;
+
+    // TIFF 标签
+    const TAG_IMAGE_WIDTH: u16 = 256;
+    const TAG_IMAGE_LENGTH: u16 = 257;
+    const TAG_SAMPLES_PER_PIXEL: u16 = 277;
+
+    let mut width = 0u32;
+    let mut height = 0u32;
+    let mut samples_per_pixel = 4u16;
+
+    // 解析 IFD 条目
+    for _ in 0..entry_count {
+        let mut entry = [0u8; 12];
+        file.read_exact(&mut entry).map_err(|e| e.to_string())?;
+
+        let tag = read_u16(&entry[0..2]);
+        let _field_type = read_u16(&entry[2..4]);
+        let value_offset = read_u32(&entry[8..12]);
+
+        match tag {
+            TAG_IMAGE_WIDTH => width = value_offset,
+            TAG_IMAGE_LENGTH => height = value_offset,
+            TAG_SAMPLES_PER_PIXEL => samples_per_pixel = value_offset as u16,
+            _ => {}
+        }
+    }
+
+    if width == 0 || height == 0 {
+        return Err("无法获取图像信息".to_string());
+    }
+
+    eprintln!("[THUMBNAIL] 图像信息: width={}x{}, height={}x{}, samples={}, pixels={}", width, height, width, height, samples_per_pixel, width * height);
+
+    // 检查是否为 5 通道或更多（CMYK + 专色）
+    let has_spot_color = samples_per_pixel >= 5;
+
+    // 对于 5 通道 TIFF，使用简化的 ImageMagick RGB 转换
+    // 对于其他 TIFF，使用完整解码生成预览图
+    if has_spot_color {
+        eprintln!("[THUMBNAIL] 检测到专色通道(samples={}), 使用简化的RGB转换", samples_per_pixel);
+        let result = convert_with_imagemagick_simple(file_path, max_size);
+        let elapsed = start_time.elapsed();
+        match &result {
+            Ok(_) => eprintln!("[THUMBNAIL] RGB转换成功: 总耗时={}ms", elapsed.as_millis()),
+            Err(e) => eprintln!("[THUMBNAIL] RGB转换失败: 总耗时={}ms, error={}", elapsed.as_millis(), e),
+        }
+        return result;
+    }
+
+    eprintln!("[THUMBNAIL] 使用完整解码处理");
+    let result = generate_thumbnail_from_file(file_path, max_size);
+    let elapsed = start_time.elapsed();
+    match &result {
+        Ok(_) => eprintln!("[THUMBNAIL] 完整解码成功: 总耗时={}ms", elapsed.as_millis()),
+        Err(e) => eprintln!("[THUMBNAIL] 完整解码失败: 总耗时={}ms, error={}", elapsed.as_millis(), e),
+    }
+    result
+}
+
+/// 使用 ImageMagick 简化转换：直接将 TIFF 转换为 RGB 并缩放
+/// 不尝试提取专色通道，适用于所有格式的 TIFF
+/// 使用 JPEG 格式压缩以减少存储空间
+fn convert_with_imagemagick_simple(file_path: &str, max_size: u32) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose};
+    use std::process::Stdio;
+
+    let temp_dir = std::env::temp_dir();
+    let temp_output = temp_dir.join(format!("thumb_simple_{}.jpg", uuid::Uuid::new_v4()));
+
+    eprintln!("[SIMPLE_CONVERT] 开始转换: file={}, max_size={}", file_path, max_size);
+    eprintln!("[SIMPLE_CONVERT] 输出路径: {}", temp_output.display());
+    let start = std::time::Instant::now();
+
+    // 使用 ImageMagick 直接转换并缩放，使用 JPEG 压缩
+    // -quality 60: JPEG 质量 60%（快速预览）
+    // -strip: 移除所有元数据，减少文件大小
+    let convert_result = std::process::Command::new("magick")
+        .arg(format!("{}[0]", file_path))  // 只读取第一页
+        .arg("-strip")      // 移除元数据
+        .arg("-quality")    // JPEG 质量
+        .arg("60")          // 60% 质量（快速预览）
+        .arg("-resize")
+        .arg(format!("{}x{}", max_size, max_size))
+        .arg(&temp_output)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    let elapsed = start.elapsed();
+    eprintln!("[SIMPLE_CONVERT] ImageMagick 执行耗时: {}ms", elapsed.as_millis());
+
+    match &convert_result {
+        Ok(output) => {
+            eprintln!("[SIMPLE_CONVERT] 状态码: {:?}", output.status.code());
+            if !output.stdout.is_empty() {
+                eprintln!("[SIMPLE_CONVERT] stdout:\n{}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprintln!("[SIMPLE_CONVERT] stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+            }
+            eprintln!("[SIMPLE_CONVERT] 输出文件存在={}", temp_output.exists());
+            // 检查输出目录
+            if let Some(parent) = temp_output.parent() {
+                eprintln!("[SIMPLE_CONVERT] 输出目录: {}, 存在={}", parent.display(), parent.exists());
+            }
+        }
+        Err(e) => {
+            eprintln!("[SIMPLE_CONVERT] ImageMagick 命令执行失败: {}", e);
+        }
+    }
+
+    let output = convert_result.map_err(|e| format!("ImageMagick 执行失败: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("ImageMagick 转换失败: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+
+    if !temp_output.exists() {
+        return Err("输出文件未生成".to_string());
+    }
+
+    // 读取生成的 JPEG
+    let jpeg_data = std::fs::read(&temp_output)
+        .map_err(|e| format!("读取输出文件失败: {}", e))?;
+    let _ = std::fs::remove_file(&temp_output);
+
+    eprintln!("[SIMPLE_CONVERT] 转换成功: 输出大小={} bytes", jpeg_data.len());
+
+    // 转换为 Base64（JPEG 格式）
+    let base64_str = general_purpose::STANDARD.encode(&jpeg_data);
+    Ok(format!("data:image/jpeg;base64,{}", base64_str))
+}
+
+/// 从压缩的 TIFF 文件生成专色预览（使用 ImageMagick 解码）
+/// 适用于 LZW 等压缩格式的 5 通道 TIFF 文件
+#[allow(dead_code)]
+fn generate_spot_color_preview(
+    file_path: &str,
+    _width: u32,
+    _height: u32,
+    max_size: u32,
+    _is_little_endian: bool,
+) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose};
+    use std::io::Cursor;
+
+    let start_time = std::time::Instant::now();
+    eprintln!("[SPOT_COLOR] 开始生成专色预览: file={}, max_size={}", file_path, max_size);
+
+    let temp_dir = std::env::temp_dir();
+
+    // 首先检查 ImageMagick 是否可用
+    let check_start = std::time::Instant::now();
+    let check_result = std::process::Command::new("magick")
+        .arg("-version")
+        .output();
+    let check_elapsed = check_start.elapsed();
+    eprintln!("[SPOT_COLOR] ImageMagick检查: available={}, 耗时={}ms", check_result.is_ok(), check_elapsed.as_millis());
+
+    if check_result.is_err() {
+        let elapsed = start_time.elapsed();
+        eprintln!("[SPOT_COLOR] ImageMagick不可用: 总耗时={}ms", elapsed.as_millis());
+        return Err("ImageMagick 未安装或不在 PATH 中。请安装 ImageMagick 并确保可以使用 'magick' 命令。".to_string());
+    }
+
+    // 方法1：尝试使用 ImageMagick 分离通道并提取第 5 个通道
+    eprintln!("[SPOT_COLOR] 尝试方法1: 分离通道并提取第5通道");
+    let method1_start = std::time::Instant::now();
+    let temp_input = temp_dir.join(format!("spot_input_{}.tif", uuid::Uuid::new_v4()));
+    let temp_output = temp_dir.join(format!("spot_output_{}.png", uuid::Uuid::new_v4()));
+
+    std::fs::copy(file_path, &temp_input)
+        .map_err(|e| format!("复制文件失败: {}", e))?;
+
+    // 使用 -separate 分离通道，然后提取第 5 通道
+    let extract_result = std::process::Command::new("magick")
+        .arg(&temp_input)
+        .arg("-separate")  // 分离所有通道
+        .arg("-channel")   // 选择通道
+        .arg("5")          // 第 5 通道（专色）
+        .arg("-negate")    // 反转（因为专色通道通常是反转的）
+        .arg(&temp_output)
+        .output();
+
+    let _ = std::fs::remove_file(&temp_input);
+
+    match &extract_result {
+        Ok(output) => {
+            // 记录 ImageMagick 输出
+            if !output.status.success() {
+                eprintln!("[SPOT_COLOR] 方法1: ImageMagick 返回非零状态码: {:?}", output.status.code());
+            }
+            if !output.stdout.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法1 stdout: {}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法1 stderr: {}", String::from_utf8_lossy(&output.stderr));
+            }
+            eprintln!("[SPOT_COLOR] 方法1: 输出文件存在={}", temp_output.exists());
+        }
+        Err(e) => {
+            eprintln!("[SPOT_COLOR] 方法1: ImageMagick 命令执行失败: {}", e);
+        }
+    }
+
+    if let Ok(output) = extract_result {
+        if output.status.success() && temp_output.exists() {
+            let spot_data = std::fs::read(&temp_output)
+                .map_err(|e| format!("读取专色通道失败: {}", e))?;
+            let _ = std::fs::remove_file(&temp_output);
+
+            let gray_img = image::load_from_memory(&spot_data)
+                .map_err(|e| format!("加载专色通道失败: {}", e))?;
+
+            let (orig_w, orig_h) = (gray_img.width(), gray_img.height());
+            let scale = (max_size as f32 / orig_w.max(orig_h) as f32).min(1.0);
+            let thumb_w = (orig_w as f32 * scale) as u32;
+            let thumb_h = (orig_h as f32 * scale) as u32;
+
+            // 转换为红色显示
+            let rgb_img = gray_img.to_rgb8();
+            let mut red_img = rgb_img.clone();
+
+            for pixel in red_img.pixels_mut() {
+                let gray_value = pixel[0];
+                *pixel = image::Rgb([gray_value, 0, 0]);
+            }
+
+            let resized = image::imageops::resize(
+                &red_img,
+                thumb_w,
+                thumb_h,
+                image::imageops::FilterType::Triangle,
+            );
+
+            let mut png_bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut png_bytes);
+            resized.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+
+            let base64_str = general_purpose::STANDARD.encode(&png_bytes);
+            let method1_elapsed = method1_start.elapsed();
+            eprintln!("[SPOT_COLOR] 方法1成功: 耗时={}ms, 输出尺寸={}x{}", method1_elapsed.as_millis(), thumb_w, thumb_h);
+            return Ok(format!("data:image/png;base64,{}", base64_str));
+        }
+    }
+
+    // 方法1失败日志
+    let method1_elapsed = method1_start.elapsed();
+    eprintln!("[SPOT_COLOR] 方法1失败: 耗时={}ms", method1_elapsed.as_millis());
+
+    // 方法2：尝试使用索引语法提取通道
+    eprintln!("[SPOT_COLOR] 尝试方法2: 使用索引语法提取通道");
+    let method2_start = std::time::Instant::now();
+    let temp_input2 = temp_dir.join(format!("spot_input2_{}.tif", uuid::Uuid::new_v4()));
+    let temp_output2 = temp_dir.join(format!("spot_output2_{}.png", uuid::Uuid::new_v4()));
+
+    std::fs::copy(file_path, &temp_input2)
+        .map_err(|e| format!("复制文件失败: {}", e))?;
+
+    let extract_result2 = std::process::Command::new("magick")
+        .arg(format!("{}[4]", temp_input2.display()))  // [4] = 第 5 通道
+        .arg(&temp_output2)
+        .output();
+
+    let _ = std::fs::remove_file(&temp_input2);
+
+    match &extract_result2 {
+        Ok(output) => {
+            // 记录 ImageMagick 输出
+            if !output.status.success() {
+                eprintln!("[SPOT_COLOR] 方法2: ImageMagick 返回非零状态码: {:?}", output.status.code());
+            }
+            if !output.stdout.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法2 stdout: {}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法2 stderr: {}", String::from_utf8_lossy(&output.stderr));
+            }
+            eprintln!("[SPOT_COLOR] 方法2: 输出文件存在={}", temp_output2.exists());
+        }
+        Err(e) => {
+            eprintln!("[SPOT_COLOR] 方法2: ImageMagick 命令执行失败: {}", e);
+        }
+    }
+
+    if let Ok(output) = extract_result2 {
+        if output.status.success() && temp_output2.exists() {
+            let spot_data = std::fs::read(&temp_output2)
+                .map_err(|e| format!("读取专色通道失败: {}", e))?;
+            let _ = std::fs::remove_file(&temp_output2);
+
+            let gray_img = image::load_from_memory(&spot_data)
+                .map_err(|e| format!("加载专色通道失败: {}", e))?;
+
+            let (orig_w, orig_h) = (gray_img.width(), gray_img.height());
+            let scale = (max_size as f32 / orig_w.max(orig_h) as f32).min(1.0);
+            let thumb_w = (orig_w as f32 * scale) as u32;
+            let thumb_h = (orig_h as f32 * scale) as u32;
+
+            let rgb_img = gray_img.to_rgb8();
+            let mut red_img = rgb_img.clone();
+
+            for pixel in red_img.pixels_mut() {
+                let gray_value = pixel[0];
+                *pixel = image::Rgb([gray_value, 0, 0]);
+            }
+
+            let resized = image::imageops::resize(
+                &red_img,
+                thumb_w,
+                thumb_h,
+                image::imageops::FilterType::Triangle,
+            );
+
+            let mut png_bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut png_bytes);
+            resized.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+
+            let base64_str = general_purpose::STANDARD.encode(&png_bytes);
+            let method2_elapsed = method2_start.elapsed();
+            eprintln!("[SPOT_COLOR] 方法2成功: 耗时={}ms, 输出尺寸={}x{}", method2_elapsed.as_millis(), thumb_w, thumb_h);
+            return Ok(format!("data:image/png;base64,{}", base64_str));
+        }
+    }
+
+    // 方法2失败日志
+    let method2_elapsed = method2_start.elapsed();
+    eprintln!("[SPOT_COLOR] 方法2失败: 耗时={}ms", method2_elapsed.as_millis());
+
+    // 方法3：回退到转换整个 TIFF 为 RGB
+    eprintln!("[SPOT_COLOR] 尝试方法3: 回退到RGB转换");
+    let method3_start = std::time::Instant::now();
+    let temp_rgb = temp_dir.join(format!("spot_rgb_{}.png", uuid::Uuid::new_v4()));
+    let convert_result = std::process::Command::new("magick")
+        .arg(file_path)
+        .arg("-colorspace")
+        .arg("RGB")
+        .arg("-resize")
+        .arg(format!("{}", max_size))
+        .arg(&temp_rgb)
+        .output();
+
+    match &convert_result {
+        Ok(output) => {
+            // 记录 ImageMagick 输出
+            if !output.status.success() {
+                eprintln!("[SPOT_COLOR] 方法3: ImageMagick 返回非零状态码: {:?}", output.status.code());
+            }
+            if !output.stdout.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法3 stdout: {}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprintln!("[SPOT_COLOR] 方法3 stderr: {}", String::from_utf8_lossy(&output.stderr));
+            }
+            eprintln!("[SPOT_COLOR] 方法3: 输出文件存在={}", temp_rgb.exists());
+        }
+        Err(e) => {
+            eprintln!("[SPOT_COLOR] 方法3: ImageMagick 命令执行失败: {}", e);
+        }
+    }
+
+    if let Ok(output) = convert_result {
+        if output.status.success() && temp_rgb.exists() {
+            let rgb_data = std::fs::read(&temp_rgb)
+                .map_err(|e| format!("读取 RGB 图像失败: {}", e))?;
+            let _ = std::fs::remove_file(&temp_rgb);
+
+            let img = image::load_from_memory(&rgb_data)
+                .map_err(|e| format!("加载 RGB 图像失败: {}", e))?;
+
+            let mut png_bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut png_bytes);
+            img.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| format!("PNG 编码失败: {}", e))?;
+
+            let base64_str = general_purpose::STANDARD.encode(&png_bytes);
+            let method3_elapsed = method3_start.elapsed();
+            eprintln!("[SPOT_COLOR] 方法3成功: 耗时={}ms", method3_elapsed.as_millis());
+            return Ok(format!("data:image/png;base64,{}", base64_str));
+        }
+    }
+
+    // 方法3失败日志
+    let method3_elapsed = method3_start.elapsed();
+    eprintln!("[SPOT_COLOR] 方法3失败: 耗时={}ms", method3_elapsed.as_millis());
+
+    let total_elapsed = start_time.elapsed();
+    eprintln!("[SPOT_COLOR] 所有方法均失败: 总耗时={}ms", total_elapsed.as_millis());
+    Err(format!("ImageMagick 处理失败。请确保已安装 ImageMagick 并且支持 TIFF 格式。"))
 }
 
 // ============================================================
@@ -920,8 +1436,11 @@ async fn process_single_tiff(
     let code = generate_code();
     let now = chrono::Utc::now().timestamp();
 
-    // 尝试生成缩略图（200px 最大边，批量导入时忽略失败）
-    let preview_image = generate_thumbnail_from_file(&file_path_str, 200).ok();
+    // 快速生成缩略图（100px，JPEG 质量 60，批量导入时忽略失败）
+    let preview_image = generate_fast_thumbnail(&file_path_str, 100).ok();
+
+    // 获取默认出血高度配置
+    let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
 
     db.sqlite().execute(
         "INSERT INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
@@ -931,10 +1450,10 @@ async fn process_single_tiff(
             &id as &dyn rusqlite::ToSql,
             &pattern_name,
             &code,
-            &metadata.height_cm,  // 高度(cm)
-            &2.0,   // 默认出血高度 (cm)
-            &10,    // 默认每行个数
-            &10,    // 默认行数
+            &metadata.height_cm,          // 高度(cm)
+            &default_bleed_height,        // 使用配置的默认出血高度
+            &10,                           // 默认每行个数
+            &10,                           // 默认行数
             &Some(file_path_str),
             &request.customer_id,
             &Some(folder_id),

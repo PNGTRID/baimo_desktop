@@ -48,7 +48,6 @@ export interface Pattern {
   customerId?: string;
   folderId?: string; // 所属文件夹
   colorType?: string; // 颜色类型：SINGLE（单色）或 MULTI（多色）
-  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +68,7 @@ export interface CreatePatternFromTiffRequest {
   localFilePath: string;
   actualHeight: number;
   customerId?: string;
+  code?: string;
 }
 
 // ============ 订单相关 ============

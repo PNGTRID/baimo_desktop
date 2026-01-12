@@ -1,6 +1,27 @@
 use crate::models::{CreateOrderRequest, Order, OrderPatternItem, UpdateOrderRequest, UpdateOrderFullRequest};
 use crate::services::{Database, pricing::calculate_pattern_price};
+use crate::utils::logging::log_order_operation;
 use tauri::State;
+
+// ============================================================
+// 辅助函数
+// ============================================================
+
+/// 从数据库获取配置值（字符串）
+fn get_config_value(db: &Database, key: &str) -> Option<String> {
+    db.sqlite().query_row(
+        "SELECT value FROM app_configs WHERE key = ?1",
+        &[&key as &dyn rusqlite::ToSql],
+        |row| row.get(0),
+    ).ok().flatten()
+}
+
+/// 从数据库获取配置值（浮点数）
+fn get_config_f64(db: &Database, key: &str, default: f64) -> f64 {
+    get_config_value(db, key)
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(default)
+}
 
 // 生成唯一 ID
 fn generate_id() -> String {
@@ -63,9 +84,10 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
             "SELECT
                 opi.id, opi.patternId, p.name as pattern_name,
                 opi.quantity, opi.area, opi.pricingMode, opi.unitPrice, opi.totalPrice,
-                opi.color_variant_id
+                opi.color_variant_id, pc.name as color_variant_name
             FROM order_pattern_items opi
             LEFT JOIN patterns p ON opi.patternId = p.id
+            LEFT JOIN pattern_colors pc ON opi.color_variant_id = pc.id
             WHERE opi.orderId = ?1",
             &[&order_id as &dyn rusqlite::ToSql],
             |row: &rusqlite::Row| {
@@ -79,6 +101,7 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
                     unit_price: row.get(6)?,
                     total_price: row.get(7)?,
                     color_variant_id: row.get(8)?,
+                    color_variant_name: row.get(9)?,
                 })
             },
         ).map_err(|e| format!("Failed to fetch order items: {:?}", e))?;
@@ -152,9 +175,10 @@ pub async fn get_order_by_id(
                 "SELECT
                     opi.id, opi.patternId, p.name as pattern_name,
                     opi.quantity, opi.area, opi.pricingMode, opi.unitPrice, opi.totalPrice,
-                    opi.color_variant_id
+                    opi.color_variant_id, pc.name as color_variant_name
                 FROM order_pattern_items opi
                 LEFT JOIN patterns p ON opi.patternId = p.id
+                LEFT JOIN pattern_colors pc ON opi.color_variant_id = pc.id
                 WHERE opi.orderId = ?1",
                 &[&order_id as &dyn rusqlite::ToSql],
                 |row: &rusqlite::Row| {
@@ -168,6 +192,7 @@ pub async fn get_order_by_id(
                         unit_price: row.get(6)?,
                         total_price: row.get(7)?,
                         color_variant_id: row.get(8)?,
+                        color_variant_name: row.get(9)?,
                     })
                 },
             ).map_err(|e| format!("Failed to fetch order items: {:?}", e))?;
@@ -229,6 +254,11 @@ pub async fn create_order(
 
     println!("[订单创建] 客户信息: id={}, name={}, unitPrice={}", customer_id, customer_name, customer_unit_price);
 
+    // 1.5 获取价格计算配置
+    let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
+    let formula_constant = get_config_f64(&db, "pricing_formula_constant", 1600.0);
+    println!("[订单创建] 价格配置: default_bleed_height={}cm, formula_constant={}", default_bleed_height, formula_constant);
+
     // 2. 计算每个订单项的单价和总价
     let mut order_items: Vec<OrderPatternItem> = Vec::new();
 
@@ -269,18 +299,21 @@ pub async fn create_order(
             (up, tp)
         } else {
             // 数量模式：使用价格计算引擎
+            // 使用图案的出血高度（如果有），否则使用默认配置
+            let effective_bleed_height = if bleed_height > 0.0 { bleed_height } else { default_bleed_height };
             let pricing_result = calculate_pattern_price(
                 crate::services::pricing::PatternPricingParams {
                     customer_unit_price,
                     actual_height,
-                    bleed_height,
+                    bleed_height: effective_bleed_height,
                     units_per_row,
                     quantity: item_request.quantity,
                     area: item_request.area,
+                    formula_constant,
                 }
             ).map_err(|e| format!("Price calculation failed: {}", e))?;
-            println!("[订单创建] 数量模式计价: customer_unit_price={}, actual_height={}cm, units_per_row={}, quantity={}",
-                     customer_unit_price, actual_height, units_per_row, item_request.quantity);
+            println!("[订单创建] 数量模式计价: customer_unit_price={}, actual_height={}cm, bleed_height={}cm, units_per_row={}, quantity={}",
+                     customer_unit_price, actual_height, effective_bleed_height, units_per_row, item_request.quantity);
             (pricing_result.unit_price, pricing_result.total_price)
         };
 
@@ -296,6 +329,7 @@ pub async fn create_order(
             unit_price,
             total_price,
             color_variant_id: item_request.color_variant_id.clone(),
+            color_variant_name: None, // 创建时暂不查询颜色名称
         });
     }
 
@@ -421,16 +455,80 @@ pub async fn confirm_order(
 ) -> Result<Order, String> {
     let now = chrono::Utc::now().timestamp();
 
-    // 更新订单为已确认状态
-    db.sqlite().execute(
-        "UPDATE orders SET is_confirmed = ?1, confirmed_at = ?2, updatedAt = ?3 WHERE id = ?4",
-        &[
-            &true as &dyn rusqlite::ToSql,
-            &now,
-            &now,
-            &id,
-        ],
-    ).map_err(|e| format!("Failed to confirm order: {:?}", e))?;
+    // 先获取订单信息用于日志
+    let order_info = db.sqlite().query_row(
+        "SELECT o.customerId, c.name, o.totalAmount
+         FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+         WHERE o.id = ?1",
+        &[&id as &dyn rusqlite::ToSql],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?)),
+    ).ok().flatten();
+
+    // 使用事务确保原子性：订单确认 + 余额扣减 + 财务记录
+    db.sqlite().transaction(|tx| {
+        // 1. 获取订单和客户信息
+        let (customer_id, customer_name, total_amount): (String, String, f64) = tx.query_row(
+            "SELECT o.customerId, c.name, o.totalAmount
+             FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+             WHERE o.id = ?1",
+            &[&id as &dyn rusqlite::ToSql],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+
+        // 2. 获取当前余额
+        let current_balance: f64 = tx.query_row(
+            "SELECT balance FROM customers WHERE id = ?1",
+            &[&customer_id as &dyn rusqlite::ToSql],
+            |row| row.get(0),
+        )?;
+
+        // 3. 确认订单
+        tx.execute(
+            "UPDATE orders SET is_confirmed = ?1, confirmed_at = ?2, updatedAt = ?3 WHERE id = ?4",
+            &[
+                &true as &dyn rusqlite::ToSql,
+                &now,
+                &now,
+                &id,
+            ],
+        )?;
+
+        // 4. 扣减余额
+        let new_balance = current_balance - total_amount;
+        tx.execute(
+            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
+            &[&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
+        )?;
+
+        // 5. 创建财务记录（新增）
+        let financial_id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO financial_records
+             (id, type, amount, description, order_id, customer_id,
+              balance_before, balance_after, operator_name, created_at)
+             VALUES (?1, 'ORDER', ?2, ?3, ?4, ?5, ?6, ?7, 'System', ?8)",
+            &[
+                &financial_id as &dyn rusqlite::ToSql,
+                &total_amount,
+                &format!("订单确认 (订单号: {})", id),
+                &id,
+                &customer_id,
+                &current_balance,
+                &new_balance,
+                &now,
+            ],
+        )?;
+
+        println!("[订单确认] 已创建财务记录: id={}, amount={}, customer={}",
+                 financial_id, total_amount, customer_name);
+
+        Ok::<_, rusqlite::Error>(())
+    }).map_err(|e| format!("Failed to confirm order: {:?}", e))?;
+
+    // 记录日志
+    if let Some((customer_id, customer_name, total_amount)) = order_info {
+        log_order_operation("确认", &id, &customer_id, &customer_name, total_amount, db.clone()).await?;
+    }
 
     // 返回更新后的订单
     get_order_by_id(id, db).await?.ok_or_else(|| "Order not found".to_string())
@@ -442,10 +540,35 @@ pub async fn delete_order(
     id: String,
     db: State<'_, Database>,
 ) -> Result<bool, String> {
+    // 先获取订单信息用于日志
+    let order_info = db.sqlite().query_row(
+        "SELECT o.customerId, c.name, o.totalAmount
+         FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+         WHERE o.id = ?1",
+        &[&id as &dyn rusqlite::ToSql],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?)),
+    ).ok().flatten();
+
     db.sqlite().execute(
         "DELETE FROM orders WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
     ).map_err(|e| format!("Failed to delete order: {:?}", e))?;
+
+    // 记录日志
+    if let Some((customer_id, customer_name, amount)) = order_info {
+        use crate::commands::settings::create_system_log;
+        use crate::models::CreateSystemLogRequest;
+        let _ = create_system_log(CreateSystemLogRequest {
+            level: "WARNING".to_string(),
+            message: format!("删除订单: {}", id),
+            metadata: Some(serde_json::json!({
+                "order_id": id,
+                "customer_id": customer_id,
+                "customer_name": customer_name,
+                "amount": amount,
+            }).to_string()),
+        }, db.clone()).await;
+    }
 
     Ok(true)
 }
@@ -519,6 +642,10 @@ pub async fn update_order_full(
         None => return Err(format!("Customer not found: {}", request.customer_id)),
     };
 
+    // 1.5 获取价格计算配置
+    let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
+    let formula_constant = get_config_f64(&db, "pricing_formula_constant", 1600.0);
+
     // 2. 计算每个订单项的单价和总价
     let mut order_items: Vec<OrderPatternItem> = Vec::new();
 
@@ -556,18 +683,21 @@ pub async fn update_order_full(
             (up, tp)
         } else {
             // 数量模式：使用价格计算引擎
+            // 使用图案的出血高度（如果有），否则使用默认配置
+            let effective_bleed_height = if bleed_height > 0.0 { bleed_height } else { default_bleed_height };
             let pricing_result = calculate_pattern_price(
                 crate::services::pricing::PatternPricingParams {
                     customer_unit_price,
                     actual_height,
-                    bleed_height,
+                    bleed_height: effective_bleed_height,
                     units_per_row,
                     quantity: item_request.quantity,
                     area: item_request.area,
+                    formula_constant,
                 }
             ).map_err(|e| format!("Price calculation failed: {}", e))?;
-            println!("[订单更新] 数量模式计价: customer_unit_price={}, actual_height={}cm, units_per_row={}, quantity={}",
-                     customer_unit_price, actual_height, units_per_row, item_request.quantity);
+            println!("[订单更新] 数量模式计价: customer_unit_price={}, actual_height={}cm, bleed_height={}cm, units_per_row={}, quantity={}",
+                     customer_unit_price, actual_height, effective_bleed_height, units_per_row, item_request.quantity);
             (pricing_result.unit_price, pricing_result.total_price)
         };
 
@@ -583,6 +713,7 @@ pub async fn update_order_full(
             unit_price,
             total_price,
             color_variant_id: item_request.color_variant_id.clone(),
+            color_variant_name: None, // 创建时暂不查询颜色名称
         });
     }
 

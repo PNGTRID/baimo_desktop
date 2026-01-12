@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layout as AntLayout, Menu, theme, Typography } from 'antd';
+import { Layout as AntLayout, Menu, theme, Typography, Button } from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -9,6 +9,7 @@ import {
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import Dashboard from '@/pages/Dashboard';
 import Customers from '@/pages/Customers';
@@ -16,6 +17,8 @@ import Patterns from '@/pages/Patterns';
 import Orders from '@/pages/Orders';
 import Financial from '@/pages/Financial';
 import Settings from '@/pages/Settings';
+import { useStore } from '@/store/useStore';
+import { WebsiteApi } from '@/services/tauriApi';
 import './Layout.css';
 
 const { Header, Sider, Content } = AntLayout;
@@ -30,6 +33,16 @@ export type MenuKey = 'dashboard' | 'customers' | 'patterns' | 'orders' | 'finan
 export default function Layout() {
   const [selectedKey, setSelectedKey] = useState<MenuKey>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const { config } = useStore();
+
+  // 打开官网窗口
+  const handleOpenWebsite = async () => {
+    try {
+      await WebsiteApi.openWebsite();
+    } catch (error) {
+      console.error('Failed to open website:', error);
+    }
+  };
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -52,7 +65,7 @@ export default function Layout() {
       case 'customers':
         return <Customers />;
       case 'patterns':
-        return <Patterns />;
+        return <Patterns onNavigate={setSelectedKey} />;
       case 'orders':
         return <Orders />;
       case 'financial':
@@ -87,15 +100,15 @@ export default function Layout() {
         <div className="logo logo-light">
           <div className="logo-content">
             <div className="logo-icon">
-              <span className="logo-text">P</span>
+              <span className="logo-text">{config.companyShortName.charAt(0)}</span>
             </div>
             {!collapsed && (
               <div className="logo-title">
                 <Text style={{ color: '#1a1a1a', fontSize: '16px', fontWeight: 600, letterSpacing: '1px' }}>
-                  PNG部落
+                  {config.companyShortName}
                 </Text>
                 <Text style={{ color: '#999', fontSize: '11px', display: 'block' }}>
-                  PNG TRIBE
+                  {config.companyEnglishName}
                 </Text>
               </div>
             )}
@@ -157,6 +170,30 @@ export default function Layout() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              size="small"
+              icon={<GlobalOutlined />}
+              onClick={handleOpenWebsite}
+              style={{
+                fontWeight: 600,
+                backgroundColor: '#ff6b35',
+                borderColor: '#ff6b35',
+                color: '#fff',
+                fontSize: 18,
+                padding: '6px 20px',
+                height: 'auto',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#ff5722';
+                e.currentTarget.style.borderColor = '#ff5722';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#ff6b35';
+                e.currentTarget.style.borderColor = '#ff6b35';
+              }}
+            >
+              PNG部落，AI生成高清图案
+            </Button>
             <div className="header-info">
               <Text style={{ color: '#999', fontSize: 13 }}>
                 {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}

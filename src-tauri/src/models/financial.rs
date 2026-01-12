@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct FinancialRecord {
     pub id: String,
-    #[serde(rename = "type")]
     pub record_type: String, // PAYMENT, REFUND, ADJUSTMENT
     pub amount: f64,
     pub description: String,
@@ -25,7 +24,6 @@ pub struct FinancialRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateFinancialRecordRequest {
-    #[serde(rename = "type")]
     pub record_type: String,
     pub amount: f64,
     pub description: String,

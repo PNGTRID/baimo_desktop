@@ -7,11 +7,13 @@
 
 /* ========== CSS 变量 ========== */
 :root {
-  --color-primary: #1a5f4c;
-  --color-primary-hover: #237a62;
-  --color-primary-light: #e8f3f0;
-  --color-accent: #e07a5f;
-  --color-accent-light: #fff0ed;
+  --color-primary: #0ea5e9;
+  --color-primary-hover: #0284c7;
+  --color-primary-active: #0369a1;
+  --color-primary-light: #e0f2fe;
+  --color-accent: #f472b6;
+  --color-accent-hover: #f9a8d4;
+  --color-accent-light: #fdf2f8;
   --color-background: #faf9f6;
   --color-surface: #ffffff;
   --color-text-primary: #1a1a1a;
@@ -23,9 +25,9 @@
   --border-radius-sm: 4px;
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
-  --shadow-sm: 0 1px 2px 0 rgba(26, 95, 76, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(26, 95, 76, 0.08);
-  --shadow-lg: 0 10px 15px -3px rgba(26, 95, 76, 0.08);
+  --shadow-sm: 0 1px 2px 0 rgba(14, 165, 233, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(14, 165, 233, 0.08);
+  --shadow-lg: 0 10px 15px -3px rgba(14, 165, 233, 0.08);
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
   --transition-slow: 0.35s ease;
@@ -184,7 +186,7 @@ a:hover {
   background-color: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(26, 95, 76, 0.25);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
 }
 
 .ant-btn-primary:active {
@@ -232,7 +234,7 @@ a:hover {
 .ant-input:focus,
 .ant-input-number:focus,
 .ant-select-focused .ant-select-selector {
-  box-shadow: 0 0 0 3px rgba(26, 95, 76, 0.1);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
 
 /* ========== 标签增强 ========== */
@@ -396,7 +398,7 @@ a:hover {
 /* ========== 徽章 ========== */
 .ant-badge-count {
   background-color: var(--color-accent);
-  box-shadow: 0 2px 4px rgba(224, 122, 95, 0.3);
+  box-shadow: 0 2px 4px rgba(244, 114, 182, 0.35);
 }
 
 /* ========== 分隔线 ========== */

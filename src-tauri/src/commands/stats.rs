@@ -44,7 +44,7 @@ pub async fn get_dashboard_stats(db: State<'_, Database>) -> Result<DashboardSta
         .timestamp();
 
     let monthly_revenue: f64 = db.sqlite().query_row(
-        "SELECT COALESCE(SUM(totalAmount), 0) FROM orders WHERE createdAt >= ?1",
+        "SELECT COALESCE(SUM(totalAmount), 0) FROM orders WHERE date(createdAt, 'unixepoch') >= date(?1, 'unixepoch')",
         &[&month_start as &dyn rusqlite::ToSql],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to fetch monthly revenue: {:?}", e))?
@@ -145,14 +145,22 @@ pub async fn get_production_stats(
     };
 
     // 获取统计数据
+    // 当 area 为 0 或 NULL 时，使用印花行业公式计算：平方数 = 数量 / (160 / (actualHeight + bleedHeight) * unitsPerRow)
+    // 其中 160cm 是 1平方米的边长基准
     let stats = db.sqlite().query_row(
         "SELECT
-            COALESCE(SUM(opi.area), 0) as total_area,
+            COALESCE(SUM(
+                CASE
+                    WHEN opi.area > 0 THEN opi.area
+                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actualHeight + p.bleedHeight) * p.unitsPerRow))
+                END
+            ), 0) as total_area,
             COALESCE(SUM(opi.totalPrice), 0) as total_revenue,
             COUNT(DISTINCT opi.orderId) as order_count
          FROM order_pattern_items opi
          JOIN orders o ON opi.orderId = o.id
-         WHERE o.createdAt >= ?1 AND o.createdAt <= ?2",
+         JOIN patterns p ON opi.patternId = p.id
+         WHERE date(o.createdAt, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.createdAt, 'unixepoch') <= date(?2, 'unixepoch')",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],
         |row| {
             Ok(ProductionStats {
@@ -177,12 +185,18 @@ pub async fn get_production_stats(
     let daily_breakdown = db.sqlite().query_map(
         "SELECT
             date(o.createdAt, 'unixepoch') as date,
-            COALESCE(SUM(opi.area), 0) as area,
+            COALESCE(SUM(
+                CASE
+                    WHEN opi.area > 0 THEN opi.area
+                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actualHeight + p.bleedHeight) * p.unitsPerRow))
+                END
+            ), 0) as area,
             COALESCE(SUM(opi.totalPrice), 0) as revenue,
             COUNT(DISTINCT o.id) as order_count
          FROM order_pattern_items opi
          JOIN orders o ON opi.orderId = o.id
-         WHERE o.createdAt >= ?1 AND o.createdAt <= ?2
+         JOIN patterns p ON opi.patternId = p.id
+         WHERE date(o.createdAt, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.createdAt, 'unixepoch') <= date(?2, 'unixepoch')
          GROUP BY date(o.createdAt, 'unixepoch')
          ORDER BY date ASC",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],

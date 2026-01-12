@@ -69,13 +69,20 @@ pub async fn upsert_config(
 
     let existing = get_config(request.key.clone(), db.clone()).await?;
 
-    match existing {
+    let operation = match existing {
+        Some(_) => "更新",
+        None => "创建",
+    };
+
+    let (key, value) = (request.key.clone(), request.value.clone());
+
+    let result = match existing {
         Some(_config) => {
             db.sqlite().execute(
                 "UPDATE app_configs SET value = ?1, updated_at = ?2 WHERE key = ?3",
-                &[&request.value as &dyn rusqlite::ToSql, &now, &request.key],
+                &[&value as &dyn rusqlite::ToSql, &now, &key],
             ).map_err(|e| format!("Failed to update config: {}", e))?;
-            get_config(request.key, db).await?.ok_or_else(|| "Failed to retrieve updated config".to_string())
+            get_config(key, db.clone()).await?.ok_or_else(|| "Failed to retrieve updated config".to_string())
         },
         None => {
             let id = uuid::Uuid::new_v4().to_string();
@@ -84,16 +91,29 @@ pub async fn upsert_config(
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 &[
                     &id as &dyn rusqlite::ToSql,
-                    &request.key,
-                    &request.value,
+                    &key,
+                    &value,
                     &"GENERAL",
                     &now,
                     &now,
                 ],
             ).map_err(|e| format!("Failed to create config: {}", e))?;
-            get_config(request.key, db).await?.ok_or_else(|| "Failed to retrieve created config".to_string())
+            get_config(key, db.clone()).await?.ok_or_else(|| "Failed to retrieve created config".to_string())
         }
-    }
+    };
+
+    // 记录配置变更日志
+    let _ = create_system_log(CreateSystemLogRequest {
+        level: "INFO".to_string(),
+        message: format!("配置{}: {} = {}", operation, request.key, request.value),
+        metadata: Some(serde_json::json!({
+            "operation": operation,
+            "key": request.key,
+            "value": request.value,
+        }).to_string()),
+    }, db.clone()).await;
+
+    result
 }
 
 /// 批量更新配置
@@ -453,4 +473,78 @@ pub async fn get_log_stats(
         "period_days": days,
         "stats": stats,
     }))
+}
+
+// ============================================================
+// 配置初始化
+// ============================================================
+
+/// 初始化默认应用配置（如果不存在）
+/// 直接使用 Database 而不是 State，用于应用启动时初始化
+pub fn initialize_default_configs_sync(db: &Database) -> Result<Vec<AppConfig>, String> {
+    let now = chrono::Utc::now().timestamp();
+
+    // 定义默认配置
+    let default_configs = vec![
+        ("company_name", "白墨印花", "公司完整名称", "GENERAL"),
+        ("company_short_name", "白墨", "公司简称", "GENERAL"),
+        ("company_english_name", "Baimo Printing", "公司英文名称", "GENERAL"),
+        ("default_price_per_sq", "100", "默认每平方单价（元/平方米）", "PRICING"),
+        ("default_credit_limit", "10000", "默认信用额度", "PRICING"),
+        ("default_bleed_height", "2.0", "默认出血高度（厘米）", "PRICING"),
+        ("pricing_formula_constant", "1600", "价格公式常数", "PRICING"),
+        ("log_retention_days", "90", "日志保留天数", "SYSTEM"),
+    ];
+
+    let mut results = vec![];
+
+    for (key, value, description, category) in default_configs {
+        // 检查配置是否已存在
+        let existing = db.sqlite().query_row(
+            "SELECT id FROM app_configs WHERE key = ?1",
+            &[&key as &dyn rusqlite::ToSql],
+            |row| row.get::<_, String>(0),
+        );
+
+        // 如果不存在，则创建
+        if existing.ok().flatten().is_none() {
+            let id = uuid::Uuid::new_v4().to_string();
+            db.sqlite().execute(
+                "INSERT INTO app_configs (id, key, value, description, category, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                &[
+                    &id as &dyn rusqlite::ToSql,
+                    &key,
+                    &value,
+                    &description,
+                    &category,
+                    &now,
+                    &now,
+                ],
+            ).map_err(|e| format!("Failed to create default config {}: {}", key, e))?;
+
+            // 获取刚创建的配置
+            let config = AppConfig {
+                id,
+                key: key.to_string(),
+                value: value.to_string(),
+                description: Some(description.to_string()),
+                category: category.to_string(),
+                created_at: now.to_string(),
+                updated_at: now.to_string(),
+            };
+            results.push(config);
+            println!("[配置初始化] 创建默认配置: {} = {}", key, value);
+        } else {
+            println!("[配置初始化] 配置已存在，跳过: {}", key);
+        }
+    }
+
+    Ok(results)
+}
+
+/// 初始化默认应用配置（如果不存在）- Tauri 命令版本
+#[tauri::command]
+pub async fn initialize_default_configs(db: State<'_, Database>) -> Result<Vec<AppConfig>, String> {
+    initialize_default_configs_sync(&db)
 }

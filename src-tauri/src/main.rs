@@ -4,6 +4,7 @@
 mod commands;
 mod models;
 mod services;
+mod utils;
 
 use commands::{
     customer,
@@ -17,6 +18,9 @@ use commands::{
     settings,
     seed_data,
     tiff,
+    clipboard,
+    backup,
+    website,
 };
 use services::Database;
 use tauri::Manager;
@@ -27,12 +31,31 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // 初始化数据库服务
             // 注意：Tauri 工作目录是 src-tauri，所以需要使用 ../prisma/dev.db
             let db_path = PathBuf::from("../prisma/dev.db");
             let db = Database::new(db_path).expect("Failed to initialize database");
-            app.manage(db);
+            app.manage(db.clone());
+
+            // 初始化默认配置（如果不存在）
+            println!("[启动] 正在初始化默认配置...");
+            match settings::initialize_default_configs_sync(&db) {
+                Ok(configs) => {
+                    if !configs.is_empty() {
+                        println!("[启动] 已初始化 {} 个默认配置", configs.len());
+                    } else {
+                        println!("[启动] 配置已存在，跳过初始化");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[启动] 初始化配置失败: {}", e);
+                }
+            }
+            println!("[启动] 默认配置初始化完成");
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,6 +64,15 @@ pub fn run() {
             // ============================================================
             file_dialog::open_file_dialog,
             file_dialog::open_folder_dialog,
+            file_dialog::save_file_dialog,
+            file_dialog::save_text_file,
+            file_dialog::read_text_file,
+
+            // ============================================================
+            // 剪贴板命令
+            // ============================================================
+            clipboard::write_image_to_clipboard,
+            clipboard::write_text_to_clipboard,
 
             // ============================================================
             // 客户相关命令
@@ -123,6 +155,7 @@ pub fn run() {
             financial::customer_refund,
             financial::adjust_customer_balance,
             financial::get_financial_summary,
+            financial::migrate_order_financial_records,
 
             // ============================================================
             // 系统设置命令 - 应用配置
@@ -132,6 +165,7 @@ pub fn run() {
             settings::upsert_config,
             settings::batch_update_configs,
             settings::delete_config,
+            settings::initialize_default_configs,
 
             // ============================================================
             // 系统设置命令 - 颜色预设
@@ -145,6 +179,7 @@ pub fn run() {
             // ============================================================
             // 种子数据初始化命令
             // ============================================================
+            seed_data::seed_company_configs,
             seed_data::seed_color_presets,
 
             // ============================================================
@@ -155,6 +190,20 @@ pub fn run() {
             settings::create_system_log,
             settings::cleanup_old_logs,
             settings::get_log_stats,
+
+            // ============================================================
+            // 数据管理命令
+            // ============================================================
+            backup::export_data,
+            backup::import_data,
+            backup::get_database_path,
+            backup::backup_database,
+            backup::clear_all_data,
+
+            // ============================================================
+            // 网站操作命令
+            // ============================================================
+            website::open_website,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

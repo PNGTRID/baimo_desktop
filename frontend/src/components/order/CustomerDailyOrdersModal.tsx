@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Modal, Descriptions, Card, List, Tag, Button, Space, Statistic, Row, Col, App, Spin, Empty } from 'antd';
-import { CalendarOutlined, CopyOutlined, DownloadOutlined, UserOutlined, DollarOutlined } from '@ant-design/icons';
+import { Modal, Card, List, Tag, Button, Space, Row, Col, App, Spin, Empty, Table, Typography } from 'antd';
+import { CalendarOutlined, CopyOutlined, DownloadOutlined, UserOutlined, CheckOutlined } from '@ant-design/icons';
 import { CustomerApi, OrderApi } from '@/services/tauriApi';
 import type { Customer, Order } from '@/types';
 import dayjs from 'dayjs';
@@ -27,6 +27,7 @@ export default function CustomerDailyOrdersModal({
   const { message } = App.useApp();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [allCustomerOrders, setAllCustomerOrders] = useState<Order[]>([]); // 所有客户订单
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
 
@@ -44,10 +45,14 @@ export default function CustomerDailyOrdersModal({
 
         setCustomer(customerData);
 
+        // 筛选该客户的所有订单
+        const customerOrders = allOrders.filter((order) => order.customerId === customerId);
+        setAllCustomerOrders(customerOrders);
+
         // 筛选当天订单
-        const todayOrders = allOrders.filter((order) => {
+        const todayOrders = customerOrders.filter((order) => {
           const orderDate = dayjs(order.createdAt).format('YYYY-MM-DD');
-          return order.customerId === customerId && orderDate === targetDate;
+          return orderDate === targetDate;
         });
 
         setOrders(todayOrders);
@@ -68,21 +73,34 @@ export default function CustomerDailyOrdersModal({
   const stats = {
     totalOrders: orders.length,
     totalAmount: orders.reduce((sum, order) => sum + order.totalAmount, 0),
-    completedOrders: orders.filter((o) => o.status === 'COMPLETED').length,
-    pendingOrders: orders.filter((o) => o.status === 'PENDING' || o.status === 'CONFIRMED').length,
+    // 累加每个订单项的数量
+    totalPatterns: orders.reduce((sum, order) =>
+      sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0),
   };
 
+  // 获取当前时间（用于比较）
+  const now = dayjs();
+  const currentYear = now.year();
+  const currentMonth = now.month(); // 0-11
+
+  // 计算本月累计图案数
+  const monthlyPatterns = allCustomerOrders
+    .filter((order) => {
+      const orderDate = dayjs(order.createdAt);
+      return orderDate.year() === currentYear && orderDate.month() === currentMonth;
+    })
+    .reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+
+  // 计算今年累计图案数
+  const yearlyPatterns = allCustomerOrders
+    .filter((order) => dayjs(order.createdAt).year() === currentYear)
+    .reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+
   // 获取状态标签
-  const getStatusTag = (status: string) => {
-    const statusMap: Record<string, { color: string; text: string }> = {
-      PENDING: { color: 'default', text: '待确认' },
-      CONFIRMED: { color: 'blue', text: '已确认' },
-      IN_PROGRESS: { color: 'processing', text: '进行中' },
-      COMPLETED: { color: 'success', text: '已完成' },
-      CANCELLED: { color: 'error', text: '已取消' },
-    };
-    const info = statusMap[status] || { color: 'default', text: status };
-    return <Tag color={info.color}>{info.text}</Tag>;
+  const getStatusTag = (isConfirmed: boolean) => {
+    return isConfirmed
+      ? <Tag color="success" icon={<CheckOutlined />}>已确认</Tag>
+      : <Tag color="default">待确认</Tag>;
   };
 
   // 复制为图片
@@ -145,47 +163,85 @@ export default function CustomerDailyOrdersModal({
     >
       <Spin spinning={loading}>
         <div id="daily-orders-content" style={{ padding: '20px', backgroundColor: '#fff' }}>
-          {/* 客户信息 */}
+          {/* 客户信息 + 汇总统计 */}
           {customer && (
             <Card style={{ marginBottom: 16 }}>
-              <Descriptions title={<><UserOutlined /> 客户信息</>} column={2} size="small">
-                <Descriptions.Item label="客户名称">{customer.name}</Descriptions.Item>
-                <Descriptions.Item label="当前余额">
-                  {customer.balance >= 0 ? (
-                    <Tag color="green">¥{customer.balance.toFixed(2)}</Tag>
-                  ) : (
-                    <Tag color="red">-¥{Math.abs(customer.balance).toFixed(2)}</Tag>
-                  )}
-                </Descriptions.Item>
-                <Descriptions.Item label="信用额度">¥{customer.creditLimit.toFixed(2)}</Descriptions.Item>
-                <Descriptions.Item label="每平方单价">¥{customer.unitPrice.toFixed(2)}</Descriptions.Item>
-              </Descriptions>
+              <Row gutter={32} align="stretch">
+                {/* 左侧：客户信息 + 余额 + 累计统计 */}
+                <Col span={12} style={{ borderRight: '1px solid #f0f0f0', paddingRight: 24 }}>
+                  {/* 第一行：客户名称 + 余额 */}
+                  <Row gutter={24} style={{ marginBottom: 20 }}>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 8 }}>
+                        <UserOutlined style={{ marginRight: 8, color: '#1890ff', fontSize: 16 }} />
+                        <span style={{ fontSize: 14, color: '#8c8c8c', fontWeight: 500 }}>客户名称</span>
+                      </div>
+                      <div style={{ fontSize: 22, fontWeight: 600, color: '#262626' }}>{customer.name}</div>
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontSize: 14, color: '#8c8c8c', fontWeight: 500 }}>当前余额</span>
+                      </div>
+                      {customer.balance < 0 ? (
+                        <div style={{ fontSize: 22, fontWeight: 700, color: '#ff4d4f' }}>
+                          -¥{Math.abs(customer.balance).toFixed(2)}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 22, fontWeight: 700, color: '#52c41a' }}>
+                          ¥{customer.balance.toFixed(2)}
+                        </div>
+                      )}
+                    </Col>
+                  </Row>
+
+                  {/* 第二行：本月累计 + 今年累计 */}
+                  <Row gutter={24}>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 6 }}>
+                        <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500 }}>📅 本月累计图案数</span>
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 600, color: '#1890ff' }}>{monthlyPatterns}</div>
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 6 }}>
+                        <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500 }}>📆 今年累计图案数</span>
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 600, color: '#52c41a' }}>{yearlyPatterns}</div>
+                    </Col>
+                  </Row>
+                </Col>
+
+                {/* 右侧：今日统计 */}
+                <Col span={12}>
+                  <div style={{ fontSize: 14, color: '#8c8c8c', fontWeight: 500, marginBottom: 16 }}>
+                    📅 今日数据
+                  </div>
+                  <Row gutter={24}>
+                    <Col span={8}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>订单数</div>
+                        <div style={{ fontSize: 24, fontWeight: 600, color: '#1890ff' }}>{stats.totalOrders}</div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>图案数</div>
+                        <div style={{ fontSize: 24, fontWeight: 600, color: '#52c41a' }}>{stats.totalPatterns}</div>
+                      </div>
+                    </Col>
+                    <Col span={8}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>金额(元)</div>
+                        <div style={{ fontSize: 24, fontWeight: 600, color: '#faad14' }}>
+                          {stats.totalAmount.toFixed(0)}
+                        </div>
+                      </div>
+                    </Col>
+                  </Row>
+                </Col>
+              </Row>
             </Card>
           )}
-
-          {/* 汇总统计 */}
-          <Card style={{ marginBottom: 16 }}>
-            <Row gutter={16}>
-              <Col span={6}>
-                <Statistic title="订单总数" value={stats.totalOrders} prefix={<CalendarOutlined />} />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="总金额"
-                  value={stats.totalAmount}
-                  prefix={<DollarOutlined />}
-                  precision={2}
-                  styles={{ content: { color: '#3f8600' } }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic title="已完成" value={stats.completedOrders} styles={{ content: { color: '#52c41a' } }} />
-              </Col>
-              <Col span={6}>
-                <Statistic title="进行中" value={stats.pendingOrders} styles={{ content: { color: '#1890ff' } }} />
-              </Col>
-            </Row>
-          </Card>
 
           {/* 订单列表 */}
           <Card title={`当天订单列表 (${orders.length} 个)`}>
@@ -195,33 +251,80 @@ export default function CustomerDailyOrdersModal({
               <List
                 dataSource={orders}
                 renderItem={(order) => (
-                  <List.Item key={order.id}>
-                    <List.Item.Meta
-                      title={
+                  <List.Item key={order.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    <div style={{ width: '100%', marginBottom: 12 }}>
+                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                         <Space>
-                          <span>{order.orderNumber}</span>
-                          {getStatusTag(order.status)}
+                          <span style={{ fontWeight: 'bold' }}>{order.orderNumber}</span>
+                          {getStatusTag(order.isConfirmed)}
                         </Space>
-                      }
-                      description={
-                        <div>
-                          <div>创建时间: {dayjs(order.createdAt).format('HH:mm')}</div>
-                          <div>
-                            订单项:{' '}
-                            {order.items.map((item) => (
-                              <Tag key={item.id} style={{ margin: '2px' }}>
-                                {item.patternName} × {item.quantity}
-                              </Tag>
-                            ))}
-                          </div>
-                          {order.notes && <div style={{ color: '#8c8c8c', marginTop: 4 }}>备注: {order.notes}</div>}
-                        </div>
-                      }
+                        <Space>
+                          <span style={{ color: '#8c8c8c' }}>{dayjs(order.createdAt).format('HH:mm')}</span>
+                          {order.notes && <span style={{ color: '#8c8c8c' }}>备注: {order.notes}</span>}
+                        </Space>
+                      </Space>
+                    </div>
+
+                    {/* 订单项表格 */}
+                    <Table
+                      columns={[
+                        {
+                          title: '图案名称',
+                          dataIndex: 'patternName',
+                          key: 'patternName',
+                          width: 150,
+                        },
+                        {
+                          title: '颜色',
+                          dataIndex: 'colorVariantName',
+                          key: 'colorVariantName',
+                          width: 80,
+                          render: (value) => value || '-',
+                        },
+                        {
+                          title: '数量',
+                          dataIndex: 'quantity',
+                          key: 'quantity',
+                          width: 60,
+                        },
+                        {
+                          title: '面积(m²)',
+                          dataIndex: 'area',
+                          key: 'area',
+                          width: 80,
+                          render: (area, record) =>
+                            record.pricingMode === 'AREA' ? area?.toFixed(2) : '-',
+                        },
+                        {
+                          title: '单价(元)',
+                          dataIndex: 'unitPrice',
+                          key: 'unitPrice',
+                          width: 80,
+                          render: (value) => `¥${value.toFixed(2)}`,
+                        },
+                        {
+                          title: '合计(元)',
+                          dataIndex: 'totalPrice',
+                          key: 'totalPrice',
+                          width: 80,
+                          render: (value) => `¥${value.toFixed(2)}`,
+                        },
+                      ]}
+                      dataSource={order.items}
+                      pagination={false}
+                      size="small"
+                      rowKey="id"
+                      style={{ marginBottom: 8 }}
                     />
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#3f8600' }}>
-                        ¥{order.totalAmount.toFixed(2)}
-                      </div>
+
+                    {/* 订单小计 */}
+                    <div style={{ textAlign: 'right', marginTop: 8 }}>
+                      <Space>
+                        <Typography.Text strong>订单小计：</Typography.Text>
+                        <Typography.Text style={{ fontSize: 18, color: '#1890ff', fontWeight: 'bold' }}>
+                          ¥{order.totalAmount.toFixed(2)}
+                        </Typography.Text>
+                      </Space>
                     </div>
                   </List.Item>
                 )}

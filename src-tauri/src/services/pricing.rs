@@ -31,10 +31,17 @@ pub struct PatternPricingParams {
     pub quantity: i32,
     /// 面积（平方米，可选）
     pub area: Option<f64>,
+    /// 价格公式常数（默认 1600）
+    #[serde(default = "default_formula_constant")]
+    pub formula_constant: f64,
 }
 
 fn default_bleed_height() -> f64 {
     2.0  // 默认 2cm
+}
+
+fn default_formula_constant() -> f64 {
+    1600.0  // 默认 1600
 }
 
 /// 价格计算结果
@@ -61,7 +68,9 @@ pub struct PricingCalculation {
     pub total_height: f64,
     /// 每行个数
     pub units_per_row: i32,
-    /// 分母 (1600 / 总高度 × 每行个数)
+    /// 公式常数
+    pub formula_constant: f64,
+    /// 分母 (公式常数 / 总高度 × 每行个数)
     pub denominator: f64,
     /// 计算数量
     pub quantity: i32,
@@ -145,8 +154,8 @@ pub fn calculate_pattern_price(params: PatternPricingParams) -> Result<PricingRe
     // 总高度（毫米）= 实际高度 + 出血高度
     let total_height_mm = actual_height_mm + bleed_height_mm;
 
-    // 分母 = 1600 / 总高度 × 每行个数
-    let denominator = (1600.0 / total_height_mm) * params.units_per_row as f64;
+    // 分母 = 公式常数 / 总高度 × 每行个数
+    let denominator = (params.formula_constant / total_height_mm) * params.units_per_row as f64;
 
     // 单价 = 客户单价 / 分母
     let unit_price = params.customer_unit_price / denominator;
@@ -165,12 +174,14 @@ pub fn calculate_pattern_price(params: PatternPricingParams) -> Result<PricingRe
         bleed_height: params.bleed_height,
         total_height: total_height_mm,
         units_per_row: params.units_per_row,
+        formula_constant: params.formula_constant,
         denominator: rounded_denominator,
         quantity: params.quantity,
         area: params.area,
         formula: format!(
-            "单价 = {} ÷ (1600 ÷ {} × {}) = {}，总价 = {} × {} = {}",
+            "单价 = {} ÷ ({} ÷ {} × {}) = {}，总价 = {} × {} = {}",
             params.customer_unit_price,
+            params.formula_constant,
             total_height_mm,
             params.units_per_row,
             rounded_unit_price,
@@ -211,6 +222,7 @@ pub fn calculate_order_item_price(
         units_per_row,
         quantity,
         area: None,
+        formula_constant: 1600.0,  // 默认公式常数
     })?;
 
     Ok((result.unit_price, result.total_price))
@@ -229,6 +241,7 @@ mod tests {
             units_per_row: 2,
             quantity: 100,
             area: None,
+            formula_constant: 1600.0,
         }).unwrap();
 
         // 新公式（输入为厘米，内部转换为毫米）：
@@ -249,6 +262,7 @@ mod tests {
             units_per_row: 2,
             quantity: 100,
             area: None,
+            formula_constant: 1600.0,
         });
 
         assert!(matches!(result, Err(PricingError::InvalidCustomerUnitPrice)));

@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Input, Upload, Button, Image, Space, App, Radio } from 'antd';
+import { Input, Upload, Button, Image, Space, App, Radio, type RadioChangeEvent } from 'antd';
 import { UploadOutlined, DeleteOutlined, PictureOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 
@@ -30,7 +30,10 @@ export default function ColorVariantUploader({
   const isBase64 = (str: string) => str.startsWith('data:image/');
 
   // 检查是否为URL
-  const isUrl = (str: string) => str.startsWith('http://') || str.startsWith('https://');
+  const isUrl = (str: string | undefined) => {
+    if (!str) return false;
+    return str.startsWith('http://') || str.startsWith('https://');
+  };
 
   // 处理文件上传
   const handleFileUpload = (file: File) => {
@@ -87,7 +90,7 @@ export default function ColorVariantUploader({
   };
 
   // 切换输入模式
-  const handleModeChange = (e: { target: { value: 'upload' | 'url' } }) => {
+  const handleModeChange = (e: RadioChangeEvent) => {
     setInputMode(e.target.value);
     // 切换模式时清除当前值
     onChange?.(undefined);

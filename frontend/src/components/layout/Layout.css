@@ -29,12 +29,12 @@
 .logo-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, #1a5f4c 0%, #237a62 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(26, 95, 76, 0.3);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
   flex-shrink: 0;
 }
 
@@ -86,14 +86,14 @@
 }
 
 .ant-menu-item-selected {
-  background: linear-gradient(135deg, #1a5f4c 0%, #237a62 100%) !important;
-  box-shadow: 0 2px 8px rgba(26, 95, 76, 0.25);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%) !important;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
   color: #ffffff !important;
 }
 
 .ant-menu-item:hover {
-  background: rgba(26, 95, 76, 0.08) !important;
-  color: #1a5f4c !important;
+  background: rgba(14, 165, 233, 0.08) !important;
+  color: var(--color-primary) !important;
 }
 
 .ant-menu-item-icon {

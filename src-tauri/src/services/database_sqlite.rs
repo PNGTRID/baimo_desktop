@@ -83,10 +83,19 @@ impl SqliteDatabase {
         F: FnOnce(&rusqlite::Transaction) -> SqliteResult<R>,
     {
         let conn = self.connection.lock().unwrap();
-        let tx = conn.unchecked_transaction()?;
-        let result = f(&tx);
-        // 显式提交事务，这样在 tx 被 drop 时不会借用 conn
-        tx.commit()?;
+        let result = {
+            let tx = conn.unchecked_transaction()?;
+            let result = f(&tx);
+            // 根据结果决定是否提交事务
+            match result {
+                Ok(r) => {
+                    tx.commit()?;
+                    Ok(r)
+                }
+                Err(e) => Err(e),
+            }
+            // tx 在这里被 drop（如果已提交则无操作，否则自动回滚）
+        };
         drop(conn);
         result
     }

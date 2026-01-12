@@ -4,7 +4,7 @@
  * 订单状态通过"确认并生产"按钮控制
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   Form,
@@ -24,14 +24,15 @@ import {
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { CustomerApi, OrderApi, PatternApi } from '@/services/tauriApi';
-import type { Customer, Pattern, PricingMode, CreateOrderItemRequest, PatternColor } from '@/types';
-import EnhancedPatternSelector, { type SelectedPatternInfo } from '@/components/pattern/EnhancedPatternSelector';
+import type { Customer, Pattern, PricingMode, CreateOrderItemRequest, PatternColor, OrderPatternItem } from '@/types';
+import EnhancedPatternSelector from '@/components/pattern/EnhancedPatternSelector';
 
 interface OrderEditModalProps {
   visible: boolean;
   orderId?: string;
   customerId?: string; // 新建订单时传入
   mode: 'create' | 'edit';
+  preselectedPattern?: OrderPatternItem | null; // 预选的图案（快捷下单）
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -53,6 +54,7 @@ export default function OrderEditModal({
   orderId,
   customerId: propCustomerId,
   mode,
+  preselectedPattern,
   onSuccess,
   onCancel,
 }: OrderEditModalProps) {
@@ -64,6 +66,7 @@ export default function OrderEditModal({
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [patternSelectorVisible, setPatternSelectorVisible] = useState(false);
+  const hasProcessedPreselectedPattern = useRef(false); // 标记是否已处理预选图案
 
   // 加载数据
   useEffect(() => {
@@ -75,7 +78,7 @@ export default function OrderEditModal({
           PatternApi.getAll(),
         ]);
         setCustomers(customersData.filter((c) => c.isActive));
-        setPatterns(patternsData.filter((p) => p.isActive));
+        setPatterns(patternsData);  // 移除 isActive 过滤，Pattern 类型已无此字段
       } catch (error) {
         message.error('加载数据失败: ' + error);
       } finally {
@@ -132,6 +135,46 @@ export default function OrderEditModal({
       loadOrderData();
     }
   }, [visible, mode, orderId, propCustomerId, patterns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 处理预选图案（快捷下单功能）
+  useEffect(() => {
+    if (
+      visible &&
+      mode === 'create' &&
+      preselectedPattern &&
+      patterns.length > 0 &&
+      !hasProcessedPreselectedPattern.current
+    ) {
+      hasProcessedPreselectedPattern.current = true;
+
+      // 查找预选图案对应的 Pattern 对象
+      const pattern = patterns.find((p) => p.id === preselectedPattern.patternId);
+      if (pattern) {
+        // 优先使用传入的 propCustomerId，否则使用图案的 customerId
+        const customerIdToSet = propCustomerId || pattern.customerId;
+        if (customerIdToSet) {
+          form.setFieldValue('customerId', customerIdToSet);
+        }
+
+        // 添加预选图案到订单项
+        const newItem: OrderItemRow = {
+          key: Date.now().toString(),
+          patternId: preselectedPattern.patternId,
+          patternName: preselectedPattern.patternName,
+          quantity: preselectedPattern.quantity || 1,
+          area: preselectedPattern.area || 0,
+          pricingMode: preselectedPattern.pricingMode || 'QUANTITY',
+        };
+
+        setOrderItems([newItem]);
+      }
+    }
+
+    // 重置标记当模态框关闭时
+    if (!visible) {
+      hasProcessedPreselectedPattern.current = false;
+    }
+  }, [visible, mode, preselectedPattern, propCustomerId, patterns, form]);
 
   // 获取当前客户单价
   const currentCustomerId = Form.useWatch('customerId', form);
@@ -509,7 +552,6 @@ export default function OrderEditModal({
         patterns={patterns}
         mode={orderItems.length > 0 ? orderItems[0].pricingMode : 'QUANTITY'}
         customerUnitPrice={customerUnitPrice}
-        customerId={currentCustomerId}
         customerName={currentCustomer?.name}
         allowMultiple={true}
       />

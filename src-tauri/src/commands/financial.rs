@@ -7,7 +7,9 @@ use crate::models::{
     PaginatedFinancialRecords, FinancialRecordParams, CustomerDebtParams,
 };
 use crate::services::Database;
+use crate::utils::logging::log_financial_operation;
 use tauri::State;
+use chrono::DateTime;
 
 /// 获取财务记录列表（分页）
 #[tauri::command]
@@ -64,6 +66,10 @@ pub async fn get_financial_records(
         ),
         &params_list[..],
         |row| {
+            let timestamp: i64 = row.get(11)?;
+            let created_at = DateTime::from_timestamp(timestamp, 0)
+                .unwrap_or_else(|| chrono::Utc::now())
+                .to_rfc3339();
             Ok(FinancialRecord {
                 id: row.get(0)?,
                 record_type: row.get(1)?,
@@ -76,7 +82,7 @@ pub async fn get_financial_records(
                 balance_before: row.get(8)?,
                 balance_after: row.get(9)?,
                 operator_name: row.get(10)?,
-                created_at: row.get::<_, i64>(11)?.to_string(),
+                created_at,
             })
         },
     ).map_err(|e| format!("Failed to fetch records: {}", e))?;
@@ -107,6 +113,10 @@ pub async fn get_financial_record_by_id(
          WHERE fr.id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| {
+            let timestamp: i64 = row.get(11)?;
+            let created_at = DateTime::from_timestamp(timestamp, 0)
+                .unwrap_or_else(|| chrono::Utc::now())
+                .to_rfc3339();
             Ok(FinancialRecord {
                 id: row.get(0)?,
                 record_type: row.get(1)?,
@@ -119,7 +129,7 @@ pub async fn get_financial_record_by_id(
                 balance_before: row.get(8)?,
                 balance_after: row.get(9)?,
                 operator_name: row.get(10)?,
-                created_at: row.get::<_, i64>(11)?.to_string(),
+                created_at,
             })
         },
     ).map_err(|e| format!("Failed to fetch financial record: {}", e))
@@ -145,8 +155,8 @@ pub async fn create_financial_record(
 
     let balance_before = current_balance;
     let balance_after = match request.record_type.as_str() {
-        "PAYMENT" => balance_before - request.amount,
-        "REFUND" => balance_before + request.amount,
+        "PAYMENT" => balance_before + request.amount,  // 充值/还款：客户给钱，余额增加
+        "REFUND" => balance_before - request.amount,   // 退款：退钱给客户，余额减少
         "ADJUSTMENT" => {
             return Err("Use adjust_customer_balance for ADJUSTMENT type".to_string());
         },
@@ -173,12 +183,28 @@ pub async fn create_financial_record(
         )?;
 
         tx.execute(
-            "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
+            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
             [&balance_after as &dyn rusqlite::ToSql, &now, &request.customer_id],
         )?;
 
         Ok(())
     }).map_err(|e| format!("Failed to create financial record: {}", e))?;
+
+    // 记录日志
+    let operation = match request.record_type.as_str() {
+        "PAYMENT" => "充值",
+        "REFUND" => "退款",
+        _ => "操作",
+    };
+    log_financial_operation(
+        operation,
+        &request.customer_id,
+        &_customer_name,
+        request.amount,
+        balance_before,
+        balance_after,
+        db.clone(),
+    ).await?;
 
     get_financial_record_by_id(id, db).await?.ok_or_else(|| "Failed to retrieve created record".to_string())
 }
@@ -272,6 +298,10 @@ pub async fn get_customer_financial_history(
          LIMIT ?2",
         &[&customer_id as &dyn rusqlite::ToSql, &limit],
         |row| {
+            let timestamp: i64 = row.get(11)?;
+            let created_at = DateTime::from_timestamp(timestamp, 0)
+                .unwrap_or_else(|| chrono::Utc::now())
+                .to_rfc3339();
             Ok(FinancialRecord {
                 id: row.get(0)?,
                 record_type: row.get(1)?,
@@ -284,7 +314,7 @@ pub async fn get_customer_financial_history(
                 balance_before: row.get(8)?,
                 balance_after: row.get(9)?,
                 operator_name: row.get(10)?,
-                created_at: row.get::<_, i64>(11)?.to_string(),
+                created_at,
             })
         },
     ).map_err(|e| format!("Failed to fetch customer financial history: {}", e))
@@ -377,12 +407,23 @@ pub async fn adjust_customer_balance(
         )?;
 
         tx.execute(
-            "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
+            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
             [&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
         )?;
 
         Ok(())
     }).map_err(|e| format!("Failed to adjust balance: {}", e))?;
+
+    // 记录日志
+    log_financial_operation(
+        "余额调整",
+        &customer_id,
+        &_customer_name,
+        amount,
+        current_balance,
+        new_balance,
+        db.clone(),
+    ).await?;
 
     get_financial_record_by_id(id, db).await?.ok_or_else(|| "Failed to retrieve adjustment record".to_string())
 }
@@ -457,4 +498,72 @@ pub async fn get_financial_summary(
             "end": end_ts,
         }
     }))
+}
+
+/// 为历史已确认订单补充财务记录
+#[tauri::command]
+pub async fn migrate_order_financial_records(db: State<'_, Database>) -> Result<String, String> {
+    let mut count = 0;
+
+    // 先查询所有需要迁移的订单
+    let orders_to_migrate: Vec<(String, String, String, f64, i64)> = db.sqlite().query_map(
+        "SELECT o.id, o.customerId, c.name, o.totalAmount, o.confirmed_at
+         FROM orders o
+         LEFT JOIN customers c ON o.customerId = c.id
+         WHERE o.is_confirmed = 1
+         AND NOT EXISTS (
+             SELECT 1 FROM financial_records fr
+             WHERE fr.order_id = o.id AND fr.type = 'ORDER'
+         )",
+        &[],
+        |row| Ok((
+            row.get::<_, String>(0)?, // order_id
+            row.get::<_, String>(1)?, // customer_id
+            row.get::<_, String>(2)?, // customer_name
+            row.get::<_, f64>(3)?,    // total_amount
+            row.get::<_, i64>(4)?,    // confirmed_at
+        )),
+    ).map_err(|e| format!("Failed to query orders: {}", e))?;
+
+    // 对每个订单创建财务记录
+    for (order_id, customer_id, customer_name, total_amount, confirmed_at) in orders_to_migrate {
+        db.sqlite().transaction(|tx| {
+            // 获取当前余额
+            let current_balance: f64 = tx.query_row(
+                "SELECT balance FROM customers WHERE id = ?1",
+                &[&customer_id as &dyn rusqlite::ToSql],
+                |row| row.get(0),
+            )?;
+
+            // 计算历史余额（使用当前余额反推，简化处理）
+            let balance_before = current_balance + total_amount;
+            let balance_after = current_balance;
+
+            // 创建财务记录
+            let financial_id = uuid::Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO financial_records
+                 (id, type, amount, description, order_id, customer_id,
+                  balance_before, balance_after, operator_name, created_at)
+                 VALUES (?1, 'ORDER', ?2, ?3, ?4, ?5, ?6, ?7, 'Migration', ?8)",
+                &[
+                    &financial_id as &dyn rusqlite::ToSql,
+                    &total_amount,
+                    &format!("订单确认 (订单号: {})", order_id),
+                    &order_id,
+                    &customer_id,
+                    &balance_before,
+                    &balance_after,
+                    &confirmed_at,
+                ],
+            )?;
+
+            count += 1;
+            println!("[数据迁移] 补充财务记录: order={}, customer={}", order_id, customer_name);
+
+            Ok::<_, rusqlite::Error>(())
+        }).map_err(|e| format!("Failed to create financial record for order {}: {:?}", order_id, e))?;
+    }
+
+    Ok(format!("已补充 {} 条订单财务记录", count))
 }

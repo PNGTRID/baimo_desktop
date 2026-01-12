@@ -4,6 +4,7 @@
  */
 
 import html2canvas from 'html2canvas';
+import { ClipboardApi } from '@/services/tauriApi';
 
 /**
  * 将指定元素转换为图片并复制到剪贴板
@@ -36,27 +37,21 @@ export async function copyElementAsImage(
     const canvas = await html2canvas(element, defaultOptions);
 
     // 转换为 Blob
-    canvas.toBlob(
-      async (blob) => {
-        if (!blob) {
-          console.error('Failed to create blob from canvas');
-          return;
-        }
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png', 1.0);
+    });
 
-        try {
-          // 复制到剪贴板
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob }),
-          ]);
-        } catch (err) {
-          console.error('Failed to copy to clipboard:', err);
-          throw err;
-        }
-      },
-      'image/png',
-      1.0
-    );
+    if (!blob) {
+      console.error('Failed to create blob from canvas');
+      return false;
+    }
 
+    // 将 Blob 转换为字节数组
+    const arrayBuffer = await blob.arrayBuffer();
+    const imageBytes = Array.from(new Uint8Array(arrayBuffer));
+
+    // 使用 Tauri 原生剪贴板 API
+    await ClipboardApi.writeImage(imageBytes);
     return true;
   } catch (error) {
     console.error('Error copying element as image:', error);
@@ -96,14 +91,25 @@ export async function downloadElementAsImage(
     // 生成 canvas
     const canvas = await html2canvas(element, defaultOptions);
 
-    // 转换为 data URL
-    const dataUrl = canvas.toDataURL('image/png');
+    // 转换为 Blob
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/png', 1.0);
+    });
+
+    if (!blob) {
+      console.error('Failed to create blob from canvas');
+      return false;
+    }
 
     // 创建下载链接
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = dataUrl;
+    link.href = url;
     link.download = `${filename}.png`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     return true;
   } catch (error) {

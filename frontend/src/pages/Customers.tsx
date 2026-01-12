@@ -135,7 +135,14 @@ export default function Customers() {
       dataIndex: 'balance',
       key: 'balance',
       width: 120,
-      render: (value: number) => `¥${value.toFixed(2)}`,
+      render: (value: number) => (
+        <span style={{
+          color: value < 0 ? '#ff4d4f' : '#52c41a',
+          fontWeight: value < 0 ? 'bold' : 'normal',
+        }}>
+          ¥{value.toFixed(2)}
+        </span>
+      ),
     },
     {
       title: '信用额度',
@@ -179,7 +186,7 @@ export default function Customers() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       fixed: 'right' as const,
       render: (_: unknown, record: Customer) => (
         <Space size="small">
@@ -253,7 +260,7 @@ export default function Customers() {
         rowKey="id"
         loading={loading}
         locale={{ emptyText: '暂无客户数据' }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1300 }}
         pagination={{
           pageSize: 20,
           showSizeChanger: true,

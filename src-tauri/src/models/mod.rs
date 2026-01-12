@@ -69,7 +69,6 @@ pub struct Pattern {
     pub folder_id: Option<String>,  // 所属文件夹
     pub preview_image: Option<String>,  // 图案预览图(Base64 或文件路径)
     pub color_type: Option<String>,  // 颜色类型：SINGLE（单色）或 MULTI（多色）
-    pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -96,6 +95,7 @@ pub struct CreatePatternFromTiffRequest {
     pub local_file_path: String,
     pub actual_height: f64,
     pub customer_id: Option<String>,
+    pub code: Option<String>,  // 可选的图案编号，不传则由后端生成
 }
 
 /// 订单模型
@@ -127,7 +127,8 @@ pub struct OrderPatternItem {
     pub pricing_mode: String,
     pub unit_price: f64,
     pub total_price: f64,
-    pub color_variant_id: Option<String>,  // 颜色变体 ID
+    pub color_variant_id: Option<String>,   // 颜色变体 ID
+    pub color_variant_name: Option<String>, // 颜色变体名称
 }
 
 /// 创建订单请求

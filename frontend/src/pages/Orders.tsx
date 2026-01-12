@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Button,
   Table,
   Modal,
-  Select,
   App,
   Card,
   Typography,
@@ -25,12 +24,14 @@ import {
   PictureOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import type { Order, CreateOrderItemRequest, OrderPatternItem } from '@/types';
-import { OrderApi } from '@/services/tauriApi';
+import type { Order, CreateOrderItemRequest, OrderPatternItem, Customer, Pattern } from '@/types';
+import { OrderApi, CustomerApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
 import OrderEditModal from '@/components/order/OrderEditModal';
+import AddOrderItemModal from '@/components/order/AddOrderItemModal';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
+import { useStore } from '@/store/useStore';
 
 const { Text } = Typography;
 
@@ -150,14 +151,23 @@ const itemColumns = [
     ),
   },
   {
+    title: '颜色',
+    dataIndex: 'colorVariantName',
+    key: 'colorVariantName',
+    render: (name: string | undefined, record: OrderPatternItem) => {
+      if (!name) return <Text type="secondary">默认</Text>;
+      return <span>{name}</span>;
+    },
+  },
+  {
     title: '数量',
     dataIndex: 'quantity',
     key: 'quantity',
-    render: (value: number, record: CreateOrderItemRequest) => {
+    render: (_: unknown, record: OrderPatternItem) => {
       if (record.pricingMode === 'AREA') {
-        return `${value} 平方`;
+        return `${record.area || 0} 平方`;
       }
-      return value;
+      return record.quantity;
     },
   },
   {
@@ -176,11 +186,16 @@ const itemColumns = [
 
 export default function Orders() {
   const { message } = App.useApp();
+  const { pendingPatternForOrder, setPendingPatternForOrder } = useStore();
+  const hasCheckedPendingPattern = useRef(false);
+
   const [orders, setOrders] = useState<Order[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]); // 客户列表
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 批量选中的订单 ID
+  const [addItemModalVisible, setAddItemModalVisible] = useState(false); // 添加订单项模态框
 
   // 统计数据状态
   const [dailySummary, setDailySummary] = useState<DailySummary>({
@@ -194,6 +209,13 @@ export default function Orders() {
   const [screenshotModalVisible, setScreenshotModalVisible] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [screenshotFiles, setScreenshotFiles] = useState<UploadFile[]>([]);
+
+  // 预选图案的状态（用于传递给 OrderEditModal）
+  const [preselectedPattern, setPreselectedPattern] = useState<OrderPatternItem | null>(null);
+  // 预选客户 ID（从快捷下单的图案中提取）
+  const [preselectedCustomerId, setPreselectedCustomerId] = useState<string | undefined>(undefined);
+  // 预选图案（用于快捷下单）
+  const [pendingPattern, setPendingPattern] = useState<Pattern | null>(null);
 
   // 计算当天订单汇总
   const calculateDailySummary = (orderList: Order[]): DailySummary => {
@@ -221,9 +243,13 @@ export default function Orders() {
     console.log('[订单刷新] loadOrders 开始');
     setLoading(true);
     try {
-      const data = await OrderApi.getAll();
+      const [data, customersData] = await Promise.all([
+        OrderApi.getAll(),
+        CustomerApi.getAll(),
+      ]);
       console.log('[订单刷新] 获取到订单数据:', data.length, '条');
       setOrders(data);
+      setCustomers(customersData.filter((c) => c.isActive));
 
       // 计算当天汇总
       const summary = calculateDailySummary(data);
@@ -243,9 +269,31 @@ export default function Orders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 检查是否有预选的图案（从快捷下单功能）
+  useEffect(() => {
+    if (!hasCheckedPendingPattern.current && pendingPatternForOrder) {
+      hasCheckedPendingPattern.current = true;
+
+      // 保存到组件状态
+      setPendingPattern(pendingPatternForOrder);
+
+      // 打开添加订单项模态框
+      setAddItemModalVisible(true);
+
+      // 清除 store 中的预选图案
+      setPendingPatternForOrder(null);
+
+      const customerMsg = pendingPatternForOrder.customerId
+        ? `，客户：${customers.find(c => c.id === pendingPatternForOrder.customerId)?.name || '未知'}`
+        : '';
+      message.success(`已选择图案「${pendingPatternForOrder.name}」${customerMsg}，请选择颜色和数量`);
+    }
+  }, [pendingPatternForOrder, setPendingPatternForOrder, message, customers]);
+
   // 编辑订单
   const handleEdit = (order: Order) => {
     setEditingOrder(order);
+    setIsModalOpen(true);
   };
 
   // 新建订单
@@ -345,7 +393,7 @@ export default function Orders() {
         className="stat-card"
         title={
           <Space>
-            <SearchOutlined style={{ color: '#1a5f4c' }} />
+            <SearchOutlined style={{ color: '#0ea5e9' }} />
             <span style={{ fontSize: 15, fontWeight: 600 }}>当天订单汇总</span>
             <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
               ({dayjs().format('YYYY-MM-DD')})
@@ -359,7 +407,7 @@ export default function Orders() {
             <Statistic
               title="总订单数"
               value={dailySummary.totalOrders}
-              styles={{ content: { color: '#1a5f4c', fontWeight: 600 } }}
+              styles={{ content: { color: '#0ea5e9', fontWeight: 600 } }}
             />
           </Col>
           <Col span={6}>
@@ -456,10 +504,14 @@ export default function Orders() {
         visible={isModalOpen}
         orderId={editingOrder?.id}
         mode={editingOrder ? 'edit' : 'create'}
+        customerId={preselectedCustomerId}
+        preselectedPattern={preselectedPattern}
         onSuccess={handleModalSuccess}
         onCancel={() => {
           setIsModalOpen(false);
           setEditingOrder(null);
+          setPreselectedPattern(null);
+          setPreselectedCustomerId(undefined);
         }}
       />
 
@@ -518,6 +570,21 @@ export default function Orders() {
           )}
         </div>
       </Modal>
+
+      {/* 添加订单项模态框（快捷下单） */}
+      <AddOrderItemModal
+        visible={addItemModalVisible}
+        preselectedPattern={pendingPattern}
+        onSuccess={async () => {
+          await loadOrders();
+          setAddItemModalVisible(false);
+          setPendingPattern(null);
+        }}
+        onCancel={() => {
+          setAddItemModalVisible(false);
+          setPendingPattern(null);
+        }}
+      />
     </div>
   );
 }

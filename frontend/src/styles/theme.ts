@@ -8,15 +8,15 @@ import type { ThemeConfig } from 'antd';
 
 // ========== 色彩系统 ==========
 export const colors = {
-  // 主色 - 墨绿（专业可靠）
-  primary: '#1a5f4c',
-  primaryHover: '#237a62',
-  primaryActive: '#134838',
+  // 主色 - 天蓝色（清新现代）
+  primary: '#0ea5e9',
+  primaryHover: '#0284c7',
+  primaryActive: '#0369a1',
 
-  // 强调色 - 珊瑚红（温暖活力）
-  accent: '#e07a5f',
-  accentHover: '#f08a6f',
-  accentLight: '#fff0ed',
+  // 强调色 - 珊瑚粉（温暖活力）
+  accent: '#f472b6',
+  accentHover: '#f9a8d4',
+  accentLight: '#fdf2f8',
 
   // 中性色 - 暖灰系列
   background: '#faf9f6', // 米白色底
@@ -86,10 +86,10 @@ export const borderRadius = {
 
 // ========== 阴影系统 ==========
 export const shadows = {
-  sm: '0 1px 2px 0 rgba(26, 95, 76, 0.05)',
-  md: '0 4px 6px -1px rgba(26, 95, 76, 0.08), 0 2px 4px -1px rgba(26, 95, 76, 0.04)',
-  lg: '0 10px 15px -3px rgba(26, 95, 76, 0.08), 0 4px 6px -2px rgba(26, 95, 76, 0.04)',
-  xl: '0 20px 25px -5px rgba(26, 95, 76, 0.08), 0 10px 10px -5px rgba(26, 95, 76, 0.03)',
+  sm: '0 1px 2px 0 rgba(14, 165, 233, 0.05)',
+  md: '0 4px 6px -1px rgba(14, 165, 233, 0.08), 0 2px 4px -1px rgba(14, 165, 233, 0.04)',
+  lg: '0 10px 15px -3px rgba(14, 165, 233, 0.08), 0 4px 6px -2px rgba(14, 165, 233, 0.04)',
+  xl: '0 20px 25px -5px rgba(14, 165, 233, 0.08), 0 10px 10px -5px rgba(14, 165, 233, 0.03)',
 };
 
 // ========== Ant Design 主题配置 ==========
@@ -157,7 +157,7 @@ export const antdTheme: ThemeConfig = {
     Menu: {
       itemBg: 'transparent',
       itemSelectedBg: colors.primary,
-      itemHoverBg: 'rgba(26, 95, 76, 0.08)',
+      itemHoverBg: 'rgba(14, 165, 233, 0.08)',
       itemColor: colors.textSecondary,
       itemSelectedColor: '#ffffff',
       itemBorderRadius: 8,
@@ -172,7 +172,7 @@ export const antdTheme: ThemeConfig = {
       fontWeightStrong: 500,
       borderRadius: 8,
       defaultShadow: shadows.sm,
-      primaryShadow: `0 2px 8px rgba(26, 95, 76, 0.2)`,
+      primaryShadow: `0 2px 8px rgba(14, 165, 233, 0.3)`,
     },
 
     // 输入框
@@ -227,7 +227,10 @@ export const antdTheme: ThemeConfig = {
 export const cssVars = {
   '--color-primary': colors.primary,
   '--color-primary-hover': colors.primaryHover,
+  '--color-primary-active': colors.primaryActive,
+  '--color-primary-light': '#e0f2fe',
   '--color-accent': colors.accent,
+  '--color-accent-hover': colors.accentHover,
   '--color-accent-light': colors.accentLight,
   '--color-background': colors.background,
   '--color-surface': colors.surface,

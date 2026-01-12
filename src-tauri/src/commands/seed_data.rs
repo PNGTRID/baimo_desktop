@@ -2,6 +2,65 @@ use crate::models::ColorPreset;
 use crate::services::Database;
 use tauri::State;
 
+/// 初始化公司配置种子数据
+#[tauri::command]
+pub async fn seed_company_configs(db: State<'_, Database>) -> Result<(), String> {
+    println!("[种子数据] 开始初始化公司配置...");
+
+    // 检查是否已有公司名称配置
+    let existing_count: i32 = db
+        .sqlite()
+        .query_row(
+            "SELECT COUNT(*) FROM app_configs WHERE key IN ('company_name', 'company_short_name', 'company_english_name')",
+            &[],
+            |row| row.get(0)
+        )
+        .map_err(|e| format!("Failed to check existing configs: {}", e))?
+        .unwrap_or(0);
+
+    if existing_count >= 3 {
+        println!("[种子数据] 已存在公司配置，跳过初始化");
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+    let configs = vec![
+        ("company_name", "白墨记账系统", "公司完整名称"),
+        ("company_short_name", "白墨", "公司简称"),
+        ("company_english_name", "BAIMO", "公司英文名称"),
+    ];
+
+    println!("[种子数据] 准备插入 {} 条公司配置", configs.len());
+
+    for (key, value, description) in &configs {
+        let id = uuid::Uuid::new_v4().to_string();
+
+        match db.sqlite().execute(
+            "INSERT INTO app_configs (id, key, value, description, category, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            &[
+                &id as &dyn rusqlite::ToSql,
+                &key,
+                &value,
+                &description,
+                &"GENERAL",
+                &now,
+                &now,
+            ],
+        ) {
+            Ok(_) => {
+                println!("[种子数据] ✓ 创建配置: {} = {}", key, value);
+            }
+            Err(e) => {
+                eprintln!("[种子数据] ✗ 创建配置失败: {} - {}", key, e);
+            }
+        }
+    }
+
+    println!("[种子数据] 公司配置初始化完成");
+    Ok(())
+}
+
 /// 初始化颜色预设种子数据
 #[tauri::command]
 pub async fn seed_color_presets(db: State<'_, Database>) -> Result<Vec<ColorPreset>, String> {

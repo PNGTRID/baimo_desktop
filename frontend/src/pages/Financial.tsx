@@ -18,17 +18,18 @@ import {
   Progress,
   Tabs,
   DatePicker,
-  Descriptions,
 } from 'antd';
 import {
   PlusOutlined,
   ReloadOutlined,
   TransactionOutlined,
   WarningOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
-import type { FinancialRecord, CustomerDebt, Customer } from '@/types';
-import { FinancialApi, CustomerApi } from '@/services/tauriApi';
+import type { FinancialRecord, CustomerDebt, Customer, CompanyFinancialOverview, ProductionStats } from '@/types';
+import { FinancialApi, CustomerApi, StatsApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
+import { copyElementAsImage } from '@/utils/imageUtils';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -37,6 +38,7 @@ const recordTypeMap: Record<string, { text: string; color: string }> = {
   PAYMENT: { text: '充值/还款', color: 'green' },
   REFUND: { text: '退款', color: 'orange' },
   ADJUSTMENT: { text: '余额调整', color: 'blue' },
+  ORDER: { text: '订单消费', color: 'volcano' },
 };
 
 export default function Financial() {
@@ -46,6 +48,13 @@ export default function Financial() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerDebts, setCustomerDebts] = useState<CustomerDebt[]>([]);
   const [loading, setLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  // 统计数据状态
+  const [companyFinancial, setCompanyFinancial] = useState<CompanyFinancialOverview | null>(null);
+  const [todayStats, setTodayStats] = useState<ProductionStats | null>(null);
+  const [monthStats, setMonthStats] = useState<ProductionStats | null>(null);
+  const [yearStats, setYearStats] = useState<ProductionStats | null>(null);
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -114,10 +123,31 @@ export default function Financial() {
     }
   };
 
+  // 加载统计数据
+  const loadStats = async () => {
+    try {
+      // 并行加载所有统计数据
+      const [financial, today, month, year] = await Promise.all([
+        StatsApi.getCompanyFinancialOverview(),
+        StatsApi.getProductionStats('custom', dayjs().startOf('day').toISOString(), dayjs().toISOString()),
+        StatsApi.getProductionStats('month'),
+        // 今年数据：从1月1日到现在
+        StatsApi.getProductionStats('custom', dayjs().startOf('year').toISOString(), dayjs().toISOString()),
+      ]);
+      setCompanyFinancial(financial);
+      setTodayStats(today);
+      setMonthStats(month);
+      setYearStats(year);
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    }
+  };
+
   useEffect(() => {
     loadRecords();
     loadCustomers();
     loadCustomerDebts();
+    loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,6 +168,7 @@ export default function Financial() {
       message.success('充值成功');
       setPaymentModalVisible(false);
       paymentForm.resetFields();
+      setPagination({ ...pagination, current: 1 }); // 重置到第一页
       loadRecords();
       loadCustomerDebts();
     } catch (error) {
@@ -156,6 +187,7 @@ export default function Financial() {
       message.success('退款成功');
       setRefundModalVisible(false);
       refundForm.resetFields();
+      setPagination({ ...pagination, current: 1 }); // 重置到第一页
       loadRecords();
       loadCustomerDebts();
     } catch (error) {
@@ -174,10 +206,28 @@ export default function Financial() {
       message.success('余额调整成功');
       setAdjustModalVisible(false);
       adjustForm.resetFields();
+      setPagination({ ...pagination, current: 1 }); // 重置到第一页
       loadRecords();
       loadCustomerDebts();
     } catch (error) {
       message.error('余额调整失败: ' + error);
+    }
+  };
+
+  // 复制财务概览为图片
+  const handleCopyOverview = async () => {
+    setCopying(true);
+    try {
+      const success = await copyElementAsImage('financial-overview');
+      if (success) {
+        message.success('已复制到剪贴板');
+      } else {
+        message.error('复制失败');
+      }
+    } catch (error) {
+      message.error('复制失败: ' + error);
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -349,7 +399,7 @@ export default function Financial() {
               title="本月交易笔数"
               value={records.length}
               prefix={<TransactionOutlined />}
-              styles={{ content: { color: '#1a5f4c', fontWeight: 600 } }}
+              styles={{ content: { color: '#0ea5e9', fontWeight: 600 } }}
             />
           </Card>
         </Col>
@@ -449,42 +499,128 @@ export default function Financial() {
             label: '客户欠款',
             children: (
               <>
-                <div style={{ marginBottom: 16 }}>
-                  <Button icon={<ReloadOutlined />} onClick={loadCustomerDebts}>
+                <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                  <Button icon={<ReloadOutlined />} onClick={() => { loadCustomerDebts(); loadStats(); }}>
                     刷新
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<CopyOutlined />}
+                    onClick={handleCopyOverview}
+                    loading={copying}
+                  >
+                    复制概览
                   </Button>
                 </div>
 
-                <Table
-                  dataSource={customerDebts}
-                  columns={debtColumns}
-                  rowKey="id"
-                  pagination={false}
-                  expandable={{
-                    expandedRowRender: (record: CustomerDebt) => (
-                      <Descriptions column={2} size="small" bordered>
-                        <Descriptions.Item label="客户ID">{record.id}</Descriptions.Item>
-                        <Descriptions.Item label="当前余额">
-                          ¥{record.balance.toFixed(2)}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="信用额度">
-                          ¥{record.creditLimit.toFixed(2)}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="可用额度">
-                          ¥{record.availableCredit.toFixed(2)}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="欠款比例" span={2}>
-                          <Progress percent={Math.round(record.debtRatio)} />
-                        </Descriptions.Item>
-                        {record.notes && (
-                          <Descriptions.Item label="备注" span={2}>
-                            {record.notes}
-                          </Descriptions.Item>
-                        )}
-                      </Descriptions>
-                    ),
-                  }}
-                />
+                <div id="financial-overview" style={{ padding: '20px', backgroundColor: '#fff' }}>
+                  {/* 统计卡片区域 */}
+                  <Row gutter={16} style={{ marginBottom: 16 }}>
+                    {/* 公司总余额 */}
+                    <Col span={6}>
+                      <Card bordered={false} style={{ backgroundColor: '#f5f5f5', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 8 }}>💰 公司总余额</div>
+                          <div style={{ fontSize: 32, fontWeight: 700, color: companyFinancial?.totalBalance && companyFinancial.totalBalance >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                            {companyFinancial ? `¥${companyFinancial.totalBalance.toFixed(2)}` : '-'}
+                          </div>
+                        </div>
+                      </Card>
+                    </Col>
+
+                    {/* 今日统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📅 今日统计</div>
+                        <Row gutter={8}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={todayStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={todayStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    {/* 本月统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📆 本月统计</div>
+                        <Row gutter={8}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={monthStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={monthStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    {/* 今年统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>🗓️ 今年统计</div>
+                        <Row gutter={8}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={yearStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={yearStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  {/* 客户欠款表格 */}
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📋 客户欠款明细</div>
+                    <Table
+                      dataSource={customerDebts}
+                      columns={debtColumns}
+                      rowKey="id"
+                      pagination={false}
+                    />
+                  </div>
+                </div>
               </>
             ),
           },

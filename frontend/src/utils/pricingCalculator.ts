@@ -1,32 +1,41 @@
 /**
  * 价格计算工具
  * 100% 复用自旧项目 .baimo_web
+ * 已更新为使用系统配置
  */
 
 import type { PatternPricingParams, PricingResult } from '@/types';
+import { useStore } from '@/store/useStore';
 
 export class PricingCalculator {
   /**
    * 计算图案单价
    *
-   * 公式：图案单价 = 客户每平方单价 ÷ (1600 ÷ (实际高度 + 出血高度) × 每行个数)
+   * 公式：图案单价 = 客户每平方单价 ÷ (公式常数 ÷ (实际高度 + 出血高度) × 每行个数)
    *
    * @param params 计算参数
+   * @param formulaConstant 公式常数（可选，默认从系统配置读取）
    * @returns 单价和计算详情
    */
-  static calculatePatternUnitPrice(params: PatternPricingParams): PricingResult {
+  static calculatePatternUnitPrice(
+    params: PatternPricingParams,
+    formulaConstant?: number
+  ): PricingResult {
     const {
       customerUnitPrice,
       actualHeight,
-      bleedHeight = 20,
+      bleedHeight,
       unitsPerRow,
     } = params;
 
-    // 总高度（毫米）
-    const totalHeight = actualHeight + bleedHeight;
+    // 从系统配置获取公式常数（如果未提供）
+    const constant = formulaConstant ?? useStore.getState().config.pricingFormulaConstant;
 
-    // 分母计算：1600 ÷ 总高度 × 每行个数
-    const denominator = (1600 / totalHeight) * unitsPerRow;
+    // 总高度（毫米）
+    const totalHeight = actualHeight + (bleedHeight ?? 0);
+
+    // 分母计算：公式常数 ÷ 总高度 × 每行个数
+    const denominator = (constant / totalHeight) * unitsPerRow;
 
     // 图案单价 = 客户每平方单价 ÷ 分母
     const unitPrice = customerUnitPrice / denominator;
@@ -43,7 +52,7 @@ export class PricingCalculator {
         totalHeight,
         unitsPerRow,
         denominator: roundedDenominator,
-        formula: `${customerUnitPrice} ÷ (1600 ÷ ${totalHeight} × ${unitsPerRow}) = ${roundedUnitPrice.toFixed(2)}元`,
+        formula: `${customerUnitPrice} ÷ (${constant} ÷ ${totalHeight} × ${unitsPerRow}) = ${roundedUnitPrice.toFixed(2)}元`,
       },
     };
   }
@@ -104,12 +113,17 @@ export class PricingCalculator {
         throw new Error(`图案 ${item.patternId} 不存在`);
       }
 
+      // 从系统配置获取默认值
+      const config = useStore.getState().config;
+      const defaultBleedHeightCm = config.defaultBleedHeight;
+      const defaultBleedHeightMm = defaultBleedHeightCm * 10; // 转换为毫米
+
       // 计算单价
       const priceResult = this.calculatePatternUnitPrice({
         customerUnitPrice: customer.unitPrice,
-        actualHeight: pattern.actualHeight,
-        bleedHeight: pattern.bleedHeight || 20,
-        unitsPerRow: pattern.unitsPerRow || 10,
+        actualHeight: pattern.actualHeight * 10, // 厘米转毫米
+        bleedHeight: (pattern.bleedHeight ?? defaultBleedHeightCm) * 10, // 厘米转毫米
+        unitsPerRow: pattern.unitsPerRow ?? 10,
       });
 
       // 计算总价
