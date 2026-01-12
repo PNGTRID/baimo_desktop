@@ -2,13 +2,12 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use tauri::State;
-use rusqlite::Transaction;
 
 use crate::services::Database;
 use crate::utils::logging::log_data_operation;
 
 // ============================================================
-// 辅助函数：外键验证
+// 辅助函数
 // ============================================================
 
 /// 改进错误消息：对用户友好，对开发人员详细
@@ -33,51 +32,6 @@ fn improve_error_message(context: &str, technical_error: String) -> String {
         "清空" => "清空数据失败，请重试或联系技术支持".to_string(),
         _ => format!("操作失败: {}", context),
     }
-}
-
-/// 验证客户是否存在
-fn verify_customer_exists(tx: &Transaction, customer_id: &str) -> Result<bool, rusqlite::Error> {
-    tx.query_row(
-        "SELECT 1 FROM customers WHERE id = ?1",
-        &[&customer_id as &dyn rusqlite::ToSql],
-        |row| row.get::<_, bool>(0),
-    ).map_err(|e| {
-        if e == rusqlite::Error::QueryReturnedNoRows {
-            rusqlite::Error::QueryReturnedNoRows
-        } else {
-            e
-        }
-    })
-}
-
-/// 验证订单是否存在
-fn verify_order_exists(tx: &Transaction, order_id: &str) -> Result<bool, rusqlite::Error> {
-    tx.query_row(
-        "SELECT 1 FROM orders WHERE id = ?1",
-        &[&order_id as &dyn rusqlite::ToSql],
-        |row| row.get::<_, bool>(0),
-    ).map_err(|e| {
-        if e == rusqlite::Error::QueryReturnedNoRows {
-            rusqlite::Error::QueryReturnedNoRows
-        } else {
-            e
-        }
-    })
-}
-
-/// 验证图案是否存在
-fn verify_pattern_exists(tx: &Transaction, pattern_id: &str) -> Result<bool, rusqlite::Error> {
-    tx.query_row(
-        "SELECT 1 FROM patterns WHERE id = ?1",
-        &[&pattern_id as &dyn rusqlite::ToSql],
-        |row| row.get::<_, bool>(0),
-    ).map_err(|e| {
-        if e == rusqlite::Error::QueryReturnedNoRows {
-            rusqlite::Error::QueryReturnedNoRows
-        } else {
-            e
-        }
-    })
 }
 
 /**
@@ -259,7 +213,9 @@ pub async fn import_data(
     let mut total_count = 0;
 
     db.sqlite().transaction(|tx| {
-        // 导入配置
+        // ========== 第一阶段：导入无依赖的基础数据 ==========
+
+        // 1. 导入配置（无外键依赖）
         if let Some(configs) = import_data.get("app_configs").and_then(|v| v.as_array()) {
             for config in configs {
                 let id = config["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效配置ID")))?;
@@ -284,7 +240,31 @@ pub async fn import_data(
             total_count += configs.len();
         }
 
-        // 导入客户
+        // 2. 导入颜色预设（无外键依赖）
+        if let Some(colors) = import_data.get("color_presets").and_then(|v| v.as_array()) {
+            for color in colors {
+                let id = color["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效颜色预设ID")))?;
+                let name = color["name"].as_str().unwrap_or("");
+                let display_name = color["displayName"].as_str();
+                let color_hex = color["color"].as_str().unwrap_or("#000000");
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO color_presets (id, name, display_name, color, sort_order, is_active)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    [
+                        &id as &dyn rusqlite::ToSql,
+                        &name as &dyn rusqlite::ToSql,
+                        &display_name as &dyn rusqlite::ToSql,
+                        &color_hex as &dyn rusqlite::ToSql,
+                        &(color["sortOrder"].as_i64().unwrap_or(0) as i32) as &dyn rusqlite::ToSql,
+                        &color["isActive"].as_bool().unwrap_or(true) as &dyn rusqlite::ToSql,
+                    ],
+                )?;
+            }
+            total_count += colors.len();
+        }
+
+        // 3. 导入客户（无外键依赖）
         if let Some(customers) = import_data.get("customers").and_then(|v| v.as_array()) {
             for customer in customers {
                 let id = customer["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效客户ID")))?;
@@ -310,88 +290,7 @@ pub async fn import_data(
             total_count += customers.len();
         }
 
-        // 导入订单（验证客户存在）
-        if let Some(orders) = import_data.get("orders").and_then(|v| v.as_array()) {
-            for order in orders {
-                let id = order["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单ID")))?;
-                let customer_id = order["customerId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效客户ID")))?;
-
-                // 验证客户存在
-                if !verify_customer_exists(&tx, customer_id).unwrap_or(false) {
-                    return Err(rusqlite::Error::ToSqlConversionFailure(
-                        Box::from(format!("订单 {} 引用的客户 {} 不存在", id, customer_id))
-                    ));
-                }
-
-                let order_date = order["orderDate"].as_i64().unwrap_or(chrono::Utc::now().timestamp());
-                let notes = order["notes"].as_str();
-                let confirmed_at = order["confirmedAt"].as_i64();
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO orders (id, customerId, orderDate, totalAmount, is_confirmed, confirmed_at, notes, createdAt, updatedAt)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    [
-                        &id as &dyn rusqlite::ToSql,
-                        &customer_id as &dyn rusqlite::ToSql,
-                        &order_date as &dyn rusqlite::ToSql,
-                        &order["totalAmount"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
-                        &order["isConfirmed"].as_bool().unwrap_or(false) as &dyn rusqlite::ToSql,
-                        &confirmed_at as &dyn rusqlite::ToSql,
-                        &notes as &dyn rusqlite::ToSql,
-                        &order["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
-                        &order["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
-                    ],
-                )?;
-            }
-            total_count += orders.len();
-        }
-
-        // 导入订单图案项（印花行业专用，验证订单和图案存在）
-        if let Some(items) = import_data.get("order_pattern_items").and_then(|v| v.as_array()) {
-            for item in items {
-                let id = item["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单项ID")))?;
-                let order_id = item["orderId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单ID")))?;
-                let pattern_id = item["patternId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效图案ID")))?;
-
-                // 验证订单存在
-                if !verify_order_exists(&tx, order_id).unwrap_or(false) {
-                    return Err(rusqlite::Error::ToSqlConversionFailure(
-                        Box::from(format!("订单图案项 {} 引用的订单 {} 不存在", id, order_id))
-                    ));
-                }
-
-                // 验证图案存在
-                if !verify_pattern_exists(&tx, pattern_id).unwrap_or(false) {
-                    return Err(rusqlite::Error::ToSqlConversionFailure(
-                        Box::from(format!("订单图案项 {} 引用的图案 {} 不存在", id, pattern_id))
-                    ));
-                }
-
-                let pricing_mode = item["pricingMode"].as_str().unwrap_or("AREA");
-                let color_variant_id = item["colorVariantId"].as_str();
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO order_pattern_items (id, orderId, patternId, quantity, area, pricingMode, unitPrice, totalPrice, color_variant_id, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                    [
-                        &id as &dyn rusqlite::ToSql,
-                        &order_id as &dyn rusqlite::ToSql,
-                        &pattern_id as &dyn rusqlite::ToSql,
-                        &(item["quantity"].as_i64().unwrap_or(1) as i32) as &dyn rusqlite::ToSql,
-                        &item["area"].as_f64() as &dyn rusqlite::ToSql,
-                        &pricing_mode as &dyn rusqlite::ToSql,
-                        &item["unitPrice"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
-                        &item["totalPrice"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
-                        &color_variant_id as &dyn rusqlite::ToSql,
-                        &item["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
-                        &item["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
-                    ],
-                )?;
-            }
-            total_count += items.len();
-        }
-
-        // 导入产品
+        // 4. 导入产品（无外键依赖）
         if let Some(products) = import_data.get("products").and_then(|v| v.as_array()) {
             for product in products {
                 let id = product["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效产品ID")))?;
@@ -414,7 +313,9 @@ pub async fn import_data(
             total_count += products.len();
         }
 
-        // 导入图案（验证客户存在，如果指定了客户）
+        // ========== 第二阶段：导入依赖客户的数据 ==========
+
+        // 5. 导入图案（依赖客户，客户已在第3步导入）
         if let Some(patterns) = import_data.get("patterns").and_then(|v| v.as_array()) {
             for pattern in patterns {
                 let id = pattern["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效图案ID")))?;
@@ -425,15 +326,6 @@ pub async fn import_data(
                 let folder_id = pattern["folderId"].as_str();
                 let color_type = pattern["colorType"].as_str().unwrap_or("SINGLE");
                 let preview_image = pattern["previewImage"].as_str();
-
-                // 如果指定了客户，验证客户存在
-                if let Some(cid) = customer_id {
-                    if !verify_customer_exists(&tx, cid).unwrap_or(false) {
-                        return Err(rusqlite::Error::ToSqlConversionFailure(
-                            Box::from(format!("图案 {} 引用的客户 {} 不存在", id, cid))
-                        ));
-                    }
-                }
 
                 tx.execute(
                     "INSERT OR REPLACE INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount, localFilePath, customerId, folder_id, color_type, preview_image, isActive, createdAt, updatedAt)
@@ -460,7 +352,67 @@ pub async fn import_data(
             total_count += patterns.len();
         }
 
-        // 导入财务记录（验证客户存在）
+        // 6. 导入订单（依赖客户，客户已在第3步导入）
+        if let Some(orders) = import_data.get("orders").and_then(|v| v.as_array()) {
+            for order in orders {
+                let id = order["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单ID")))?;
+                let customer_id = order["customerId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效客户ID")))?;
+                let order_date = order["orderDate"].as_i64().unwrap_or(chrono::Utc::now().timestamp());
+                let notes = order["notes"].as_str();
+                let confirmed_at = order["confirmedAt"].as_i64();
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO orders (id, customerId, orderDate, totalAmount, is_confirmed, confirmed_at, notes, createdAt, updatedAt)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    [
+                        &id as &dyn rusqlite::ToSql,
+                        &customer_id as &dyn rusqlite::ToSql,
+                        &order_date as &dyn rusqlite::ToSql,
+                        &order["totalAmount"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
+                        &order["isConfirmed"].as_bool().unwrap_or(false) as &dyn rusqlite::ToSql,
+                        &confirmed_at as &dyn rusqlite::ToSql,
+                        &notes as &dyn rusqlite::ToSql,
+                        &order["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                        &order["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                    ],
+                )?;
+            }
+            total_count += orders.len();
+        }
+
+        // ========== 第三阶段：导入依赖订单和图案的数据 ==========
+
+        // 7. 导入订单图案项（依赖订单和图案，都已在第5、6步导入）
+        if let Some(items) = import_data.get("order_pattern_items").and_then(|v| v.as_array()) {
+            for item in items {
+                let id = item["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单项ID")))?;
+                let order_id = item["orderId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单ID")))?;
+                let pattern_id = item["patternId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效图案ID")))?;
+                let pricing_mode = item["pricingMode"].as_str().unwrap_or("AREA");
+                let color_variant_id = item["colorVariantId"].as_str();
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO order_pattern_items (id, orderId, patternId, quantity, area, pricingMode, unitPrice, totalPrice, color_variant_id, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    [
+                        &id as &dyn rusqlite::ToSql,
+                        &order_id as &dyn rusqlite::ToSql,
+                        &pattern_id as &dyn rusqlite::ToSql,
+                        &(item["quantity"].as_i64().unwrap_or(1) as i32) as &dyn rusqlite::ToSql,
+                        &item["area"].as_f64() as &dyn rusqlite::ToSql,
+                        &pricing_mode as &dyn rusqlite::ToSql,
+                        &item["unitPrice"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
+                        &item["totalPrice"].as_f64().unwrap_or(0.0) as &dyn rusqlite::ToSql,
+                        &color_variant_id as &dyn rusqlite::ToSql,
+                        &item["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                        &item["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                    ],
+                )?;
+            }
+            total_count += items.len();
+        }
+
+        // 8. 导入财务记录（依赖客户和订单，都已在第3、6步导入）
         if let Some(records) = import_data.get("financial_records").and_then(|v| v.as_array()) {
             for record in records {
                 let id = record["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效财务记录ID")))?;
@@ -469,22 +421,6 @@ pub async fn import_data(
                 let order_id = record["orderId"].as_str();
                 let order_item_id = record["orderItemId"].as_str();
                 let customer_id = record["customerId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效客户ID")))?;
-
-                // 验证客户存在
-                if !verify_customer_exists(&tx, customer_id).unwrap_or(false) {
-                    return Err(rusqlite::Error::ToSqlConversionFailure(
-                        Box::from(format!("财务记录 {} 引用的客户 {} 不存在", id, customer_id))
-                    ));
-                }
-
-                // 如果引用了订单，验证订单存在（可选）
-                if let Some(oid) = order_id {
-                    if !verify_order_exists(&tx, oid).unwrap_or(false) {
-                        return Err(rusqlite::Error::ToSqlConversionFailure(
-                            Box::from(format!("财务记录 {} 引用的订单 {} 不存在", id, oid))
-                        ));
-                    }
-                }
                 let operator_name = record["operatorName"].as_str().unwrap_or("System");
 
                 tx.execute(
@@ -507,30 +443,6 @@ pub async fn import_data(
                 )?;
             }
             total_count += records.len();
-        }
-
-        // 导入颜色预设
-        if let Some(colors) = import_data.get("color_presets").and_then(|v| v.as_array()) {
-            for color in colors {
-                let id = color["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效颜色预设ID")))?;
-                let name = color["name"].as_str().unwrap_or("");
-                let display_name = color["displayName"].as_str();
-                let color_hex = color["color"].as_str().unwrap_or("#000000");
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO color_presets (id, name, display_name, color, sort_order, is_active)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    [
-                        &id as &dyn rusqlite::ToSql,
-                        &name as &dyn rusqlite::ToSql,
-                        &display_name as &dyn rusqlite::ToSql,
-                        &color_hex as &dyn rusqlite::ToSql,
-                        &(color["sortOrder"].as_i64().unwrap_or(0) as i32) as &dyn rusqlite::ToSql,
-                        &color["isActive"].as_bool().unwrap_or(true) as &dyn rusqlite::ToSql,
-                    ],
-                )?;
-            }
-            total_count += colors.len();
         }
 
         Ok::<_, rusqlite::Error>(())
