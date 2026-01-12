@@ -181,6 +181,8 @@ model Pattern {
   colorVariants  PatternColor[]
 
   @@index([folderId])
+  @@index([createdAt])
+  @@index([customerId])
   @@map("patterns")
 }
 

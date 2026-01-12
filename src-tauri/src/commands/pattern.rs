@@ -10,6 +10,25 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
 // ============================================================
+// 常量定义
+// ============================================================
+
+/// 默认每行个数（创建图案时的默认值）
+const DEFAULT_UNITS_PER_ROW: i32 = 2;
+
+/// 默认行数（创建图案时的默认值）
+const DEFAULT_ROW_COUNT: i32 = 10;
+
+/// 默认出血高度（厘米）
+const DEFAULT_BLEED_HEIGHT: f64 = 2.0;
+
+/// 快速预览缩略图尺寸（像素）
+const THUMBNAIL_PREVIEW_SIZE: u32 = 800;
+
+/// 完整预览图尺寸（像素）
+const FULL_PREVIEW_SIZE: u32 = 200;
+
+// ============================================================
 // 辅助函数
 // ============================================================
 
@@ -160,8 +179,8 @@ pub async fn create_pattern_from_tiff(
     // 不生成缩略图，直接保存（前端需要时再从 localFilePath 动态加载）
     let preview_image: Option<String> = None;
 
-    // 默认每行个数为 2（用户可在编辑窗口修改）
-    let units_per_row = 2;
+    // 默认每行个数（用户可在编辑窗口修改）
+    let units_per_row = DEFAULT_UNITS_PER_ROW;
 
     // 如果提供了 customer_id，自动查找该客户的根文件夹
     let folder_id: Option<String> = if let Some(ref customer_id) = request.customer_id {
@@ -187,8 +206,8 @@ pub async fn create_pattern_from_tiff(
             &code,
             &request.actual_height,
             &default_bleed_height,       // 使用配置的默认出血高度
-            &units_per_row,               // 每行个数（默认 2）
-            &10,                          // 默认行数
+            &units_per_row,               // 每行个数
+            &DEFAULT_ROW_COUNT,           // 默认行数
             &Some(request.local_file_path.clone()),
             &request.customer_id,
             &folder_id,
@@ -329,10 +348,10 @@ pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
                   file_path.to_lowercase().ends_with(".tiff");
 
     if is_tiff {
-        eprintln!("[GET_PATTERN_IMAGE] 检测到TIFF格式，使用快速采样(800px)");
-        // 对于 TIFF 文件，使用快速采样生成预览图（800px）
+        eprintln!("[GET_PATTERN_IMAGE] 检测到TIFF格式，使用快速采样({}px)", THUMBNAIL_PREVIEW_SIZE);
+        // 对于 TIFF 文件，使用快速采样生成预览图
         // 这样可以处理所有格式的 TIFF，包括 5 通道 CMYK
-        let result = generate_fast_thumbnail(&file_path, 800);
+        let result = generate_fast_thumbnail(&file_path, THUMBNAIL_PREVIEW_SIZE);
         let elapsed = start_time.elapsed();
         match &result {
             Ok(data) => eprintln!("[GET_PATTERN_IMAGE] TIFF加载成功: 耗时={}ms, size={} bytes", elapsed.as_millis(), data.len()),
@@ -1452,8 +1471,8 @@ async fn process_single_tiff(
             &code,
             &metadata.height_cm,          // 高度(cm)
             &default_bleed_height,        // 使用配置的默认出血高度
-            &10,                           // 默认每行个数
-            &10,                           // 默认行数
+            &DEFAULT_UNITS_PER_ROW,       // 默认每行个数
+            &DEFAULT_ROW_COUNT,           // 默认行数
             &Some(file_path_str),
             &request.customer_id,
             &Some(folder_id),

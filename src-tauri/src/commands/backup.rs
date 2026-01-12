@@ -11,6 +11,30 @@ use crate::utils::logging::log_data_operation;
 // 辅助函数：外键验证
 // ============================================================
 
+/// 改进错误消息：对用户友好，对开发人员详细
+fn improve_error_message(context: &str, technical_error: String) -> String {
+    // 记录技术性错误到 stderr（供开发人员调试）
+    eprintln!("[ERROR] {}: {:?}", context, technical_error);
+
+    // 返回用户友好的错误消息
+    match context {
+        "导出配置" => "导出配置失败，请检查系统日志".to_string(),
+        "导出客户" => "导出客户数据失败，请检查系统日志".to_string(),
+        "导出订单" => "导出订单数据失败，请检查系统日志".to_string(),
+        "导出订单图案项" => "导出订单图案项失败，请检查系统日志".to_string(),
+        "导出产品" => "导出产品数据失败，请检查系统日志".to_string(),
+        "导出图案" => "导出图案数据失败，请检查系统日志".to_string(),
+        "导出财务记录" => "导出财务记录失败，请检查系统日志".to_string(),
+        "导出颜色预设" => "导出颜色预设失败，请检查系统日志".to_string(),
+        "JSON序列化" => "数据序列化失败，请检查系统日志".to_string(),
+        "JSON解析" => "数据格式错误，请确保导入正确的文件".to_string(),
+        "导入" => "导入数据失败，请检查文件格式和内容".to_string(),
+        "备份" => "数据库备份失败，请检查文件权限".to_string(),
+        "清空" => "清空数据失败，请重试或联系技术支持".to_string(),
+        _ => format!("操作失败: {}", context),
+    }
+}
+
 /// 验证客户是否存在
 fn verify_customer_exists(tx: &Transaction, customer_id: &str) -> Result<bool, rusqlite::Error> {
     tx.query_row(
@@ -78,7 +102,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
             "description": row.get::<_, Option<String>>(3)?,
             "category": row.get::<_, String>(4)?,
         })),
-    ).map_err(|e| format!("Failed to export configs: {}", e))?;
+    ).map_err(|e| improve_error_message("导出配置", e.to_string()))?;
     export_data.insert("app_configs".to_string(), serde_json::json!(configs));
 
     // 导出客户
@@ -95,7 +119,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
             "createdAt": row.get::<_, i64>(6)?,
             "updatedAt": row.get::<_, i64>(7)?,
         })),
-    ).map_err(|e| format!("Failed to export customers: {}", e))?;
+    ).map_err(|e| improve_error_message("导出客户", e.to_string()))?;
     export_data.insert("customers".to_string(), serde_json::json!(customers));
 
     // 导出订单
@@ -215,7 +239,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
     export_data.insert("version".to_string(), serde_json::json!("1.0"));
 
     let result = serde_json::to_string_pretty(&export_data)
-        .map_err(|e| format!("JSON序列化失败: {}", e))?;
+        .map_err(|e| improve_error_message("JSON序列化", e.to_string()))?;
 
     // 记录日志
     let _ = log_data_operation("导出", "导出完成", db).await;
@@ -230,7 +254,7 @@ pub async fn import_data(
     db: State<'_, Database>,
 ) -> Result<String, String> {
     let import_data: HashMap<String, Value> = serde_json::from_str(&json_data)
-        .map_err(|e| format!("JSON解析失败: {}", e))?;
+        .map_err(|e| improve_error_message("JSON解析", e.to_string()))?;
 
     let mut total_count = 0;
 
@@ -510,7 +534,7 @@ pub async fn import_data(
         }
 
         Ok::<_, rusqlite::Error>(())
-    }).map_err(|e| format!("导入失败: {:?}", e))?;
+    }).map_err(|e| improve_error_message("导入", e.to_string()))?;
 
     // 记录日志
     let _ = log_data_operation("导入", &format!("导入了 {} 条记录", total_count), db.clone()).await;
@@ -536,7 +560,7 @@ pub async fn backup_database(backup_path: String, db: State<'_, Database>) -> Re
         .join("prisma/dev.db");
 
     fs::copy(&db_path, &backup_path)
-        .map_err(|e| format!("备份失败: {}", e))?;
+        .map_err(|e| improve_error_message("备份", e.to_string()))?;
 
     // 记录日志
     let _ = log_data_operation("备份", &format!("备份完成: {}", backup_path), db).await;
@@ -569,7 +593,7 @@ pub async fn clear_all_data(db: State<'_, Database>) -> Result<String, String> {
         // tx.execute("DELETE FROM pattern_folders", [])?;
 
         Ok::<_, rusqlite::Error>(())
-    }).map_err(|e| format!("清空数据失败: {:?}", e))?;
+    }).map_err(|e| improve_error_message("清空", e.to_string()))?;
 
     // 记录日志
     let _ = log_data_operation("清空", "已清空所有业务数据", db).await;
