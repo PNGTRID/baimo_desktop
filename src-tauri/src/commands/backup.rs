@@ -188,6 +188,44 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
     ).map_err(|e| format!("Failed to export color presets: {}", e))?;
     export_data.insert("color_presets".to_string(), serde_json::json!(color_presets));
 
+    // 导出图案文件夹
+    let pattern_folders: Vec<Value> = db.sqlite().query_map(
+        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at FROM pattern_folders",
+        &[],
+        |row| Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "name": row.get::<_, String>(1)?,
+            "parentId": row.get::<_, Option<String>>(2)?,
+            "level": row.get::<_, i32>(3)?,
+            "path": row.get::<_, String>(4)?,
+            "sortOrder": row.get::<_, i32>(5)?,
+            "customerId": row.get::<_, Option<String>>(6)?,
+            "isSystem": row.get::<_, bool>(7)?,
+            "isActive": row.get::<_, bool>(8)?,
+            "createdAt": row.get::<_, i64>(9)?,
+            "updatedAt": row.get::<_, i64>(10)?,
+        })),
+    ).map_err(|e| format!("Failed to export pattern folders: {}", e))?;
+    export_data.insert("pattern_folders".to_string(), serde_json::json!(pattern_folders));
+
+    // 导出图案颜色变体
+    let pattern_colors: Vec<Value> = db.sqlite().query_map(
+        "SELECT id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at FROM pattern_colors",
+        &[],
+        |row| Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "patternId": row.get::<_, String>(1)?,
+            "name": row.get::<_, String>(2)?,
+            "color": row.get::<_, String>(3)?,
+            "image": row.get::<_, Option<String>>(4)?,
+            "isDefault": row.get::<_, bool>(5)?,
+            "isActive": row.get::<_, bool>(6)?,
+            "createdAt": row.get::<_, i64>(7)?,
+            "updatedAt": row.get::<_, i64>(8)?,
+        })),
+    ).map_err(|e| format!("Failed to export pattern colors: {}", e))?;
+    export_data.insert("pattern_colors".to_string(), serde_json::json!(pattern_colors));
+
     // 添加导出元数据
     export_data.insert("exported_at".to_string(), serde_json::json!(now));
     export_data.insert("version".to_string(), serde_json::json!("1.0"));
@@ -315,7 +353,37 @@ pub async fn import_data(
 
         // ========== 第二阶段：导入依赖客户的数据 ==========
 
-        // 5. 导入图案（依赖客户，客户已在第3步导入）
+        // 5. 导入图案文件夹（依赖客户，客户已在第3步导入）
+        if let Some(folders) = import_data.get("pattern_folders").and_then(|v| v.as_array()) {
+            for folder in folders {
+                let id = folder["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效文件夹ID")))?;
+                let name = folder["name"].as_str().unwrap_or("");
+                let path = folder["path"].as_str().unwrap_or("");
+                let parent_id = folder["parentId"].as_str();
+                let customer_id = folder["customerId"].as_str();
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    [
+                        &id as &dyn rusqlite::ToSql,
+                        &name as &dyn rusqlite::ToSql,
+                        &parent_id as &dyn rusqlite::ToSql,
+                        &(folder["level"].as_i64().unwrap_or(0) as i32) as &dyn rusqlite::ToSql,
+                        &path as &dyn rusqlite::ToSql,
+                        &(folder["sortOrder"].as_i64().unwrap_or(0) as i32) as &dyn rusqlite::ToSql,
+                        &customer_id as &dyn rusqlite::ToSql,
+                        &folder["isSystem"].as_bool().unwrap_or(false) as &dyn rusqlite::ToSql,
+                        &folder["isActive"].as_bool().unwrap_or(true) as &dyn rusqlite::ToSql,
+                        &folder["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                        &folder["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                    ],
+                )?;
+            }
+            total_count += folders.len();
+        }
+
+        // 6. 导入图案（依赖客户和文件夹，都已在第3、5步导入）
         if let Some(patterns) = import_data.get("patterns").and_then(|v| v.as_array()) {
             for pattern in patterns {
                 let id = pattern["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效图案ID")))?;
@@ -352,7 +420,35 @@ pub async fn import_data(
             total_count += patterns.len();
         }
 
-        // 6. 导入订单（依赖客户，客户已在第3步导入）
+        // 7. 导入图案颜色变体（依赖图案，图案已在第6步导入）
+        if let Some(colors) = import_data.get("pattern_colors").and_then(|v| v.as_array()) {
+            for color in colors {
+                let id = color["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效颜色ID")))?;
+                let pattern_id = color["patternId"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效图案ID")))?;
+                let name = color["name"].as_str().unwrap_or("");
+                let color_hex = color["color"].as_str().unwrap_or("#000000");
+                let image = color["image"].as_str();
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO pattern_colors (id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    [
+                        &id as &dyn rusqlite::ToSql,
+                        &pattern_id as &dyn rusqlite::ToSql,
+                        &name as &dyn rusqlite::ToSql,
+                        &color_hex as &dyn rusqlite::ToSql,
+                        &image as &dyn rusqlite::ToSql,
+                        &color["isDefault"].as_bool().unwrap_or(false) as &dyn rusqlite::ToSql,
+                        &color["isActive"].as_bool().unwrap_or(true) as &dyn rusqlite::ToSql,
+                        &color["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                        &color["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp()) as &dyn rusqlite::ToSql,
+                    ],
+                )?;
+            }
+            total_count += colors.len();
+        }
+
+        // 8. 导入订单（依赖客户，客户已在第3步导入）
         if let Some(orders) = import_data.get("orders").and_then(|v| v.as_array()) {
             for order in orders {
                 let id = order["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单ID")))?;
@@ -382,7 +478,7 @@ pub async fn import_data(
 
         // ========== 第三阶段：导入依赖订单和图案的数据 ==========
 
-        // 7. 导入订单图案项（依赖订单和图案，都已在第5、6步导入）
+        // 9. 导入订单图案项（依赖订单、图案和颜色变体，都已在第6、7、8步导入）
         if let Some(items) = import_data.get("order_pattern_items").and_then(|v| v.as_array()) {
             for item in items {
                 let id = item["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效订单项ID")))?;
@@ -412,7 +508,7 @@ pub async fn import_data(
             total_count += items.len();
         }
 
-        // 8. 导入财务记录（依赖客户和订单，都已在第3、6步导入）
+        // 10. 导入财务记录（依赖客户和订单，都已在第3、8步导入）
         if let Some(records) = import_data.get("financial_records").and_then(|v| v.as_array()) {
             for record in records {
                 let id = record["id"].as_str().ok_or_else(|| rusqlite::Error::ToSqlConversionFailure(Box::from("无效财务记录ID")))?;
@@ -485,20 +581,22 @@ pub async fn backup_database(backup_path: String, db: State<'_, Database>) -> Re
 pub async fn clear_all_data(db: State<'_, Database>) -> Result<String, String> {
     db.sqlite().transaction(|tx| {
         // 按照外键依赖顺序删除数据
-        // 1. 先删除子表数据
+        // 1. 先删除子表数据（最底层）
+        tx.execute("DELETE FROM financial_records", [])?;
         tx.execute("DELETE FROM order_pattern_items", [])?;
         tx.execute("DELETE FROM order_items", [])?;
-        tx.execute("DELETE FROM financial_records", [])?;
         tx.execute("DELETE FROM pattern_colors", [])?;
-        tx.execute("DELETE FROM order_pattern_items", [])?;
 
-        // 2. 删除父表数据
+        // 2. 删除父表数据（中间层）
         tx.execute("DELETE FROM orders", [])?;
         tx.execute("DELETE FROM patterns", [])?;
+        tx.execute("DELETE FROM pattern_folders", [])?;
+
+        // 3. 删除独立表（顶层）
         tx.execute("DELETE FROM customers", [])?;
         tx.execute("DELETE FROM products", [])?;
 
-        // 3. 删除配置相关（可选，保留配置和种子数据）
+        // 4. 删除配置相关（可选，保留配置和种子数据）
         // tx.execute("DELETE FROM app_configs", [])?;
         // tx.execute("DELETE FROM color_presets", [])?;
         // tx.execute("DELETE FROM system_logs", [])?;
