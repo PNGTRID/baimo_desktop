@@ -18,14 +18,11 @@ import {
   Progress,
   Tabs,
   DatePicker,
-  Popconfirm,
   Descriptions,
 } from 'antd';
 import {
   PlusOutlined,
   ReloadOutlined,
-  DollarOutlined,
-  WalletOutlined,
   TransactionOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
@@ -35,8 +32,6 @@ import dayjs from 'dayjs';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
-
-type RecordType = 'PAYMENT' | 'REFUND' | 'ADJUSTMENT';
 
 const recordTypeMap: Record<string, { text: string; color: string }> = {
   PAYMENT: { text: '充值/还款', color: 'green' },
@@ -123,10 +118,12 @@ export default function Financial() {
     loadRecords();
     loadCustomers();
     loadCustomerDebts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagination.current, pagination.pageSize, selectedCustomerId, selectedRecordType]);
 
   // ========== 事件处理 ==========
@@ -313,47 +310,57 @@ export default function Financial() {
   // ========== 渲染 ==========
   return (
     <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>
+          财务管理
+        </h2>
+        <p style={{ color: '#666', margin: 0, fontSize: 13 }}>
+          管理客户充值、退款、余额调整和财务记录
+        </p>
+      </div>
+
       {/* 财务概览卡片 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}>
-          <Card>
+          <Card className="stat-card">
             <Statistic
               title="欠款客户数"
               value={customerDebts.length}
               prefix={<WarningOutlined />}
-              styles={{ content: { color: '#cf1322' } }}
+              styles={{ content: { color: '#e07a5f', fontWeight: 600 } }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="stat-card">
             <Statistic
               title="总欠款金额"
               value={customerDebts.reduce((sum, d) => sum + Math.abs(d.balance), 0)}
               precision={2}
               prefix="¥"
-              styles={{ content: { color: '#cf1322' } }}
+              styles={{ content: { color: '#e07a5f', fontWeight: 600 } }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="stat-card">
             <Statistic
               title="本月交易笔数"
               value={records.length}
               prefix={<TransactionOutlined />}
-              styles={{ content: { color: '#1890ff' } }}
+              styles={{ content: { color: '#1a5f4c', fontWeight: 600 } }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="stat-card">
             <Statistic
               title="本月交易总额"
               value={records.reduce((sum, r) => sum + r.amount, 0)}
               precision={2}
               prefix="¥"
-              styles={{ content: { color: '#3f8600' } }}
+              styles={{ content: { color: '#52c41a', fontWeight: 600 } }}
             />
           </Card>
         </Col>

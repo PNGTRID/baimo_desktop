@@ -5,12 +5,20 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+// Tauri 窗口类型扩展
+interface TauriWindow extends Window {
+  __TAURI_INTERNALS__?: unknown;
+  __TAURI__?: unknown;
+}
+
 // 检测是否在 Tauri 环境中（Tauri 2.0 兼容）
-const isTauri = () => {
+export const isTauri = () => {
   if (typeof window === 'undefined') return false;
 
+  const tauriWindow = window as TauriWindow;
+
   // Tauri 2.0: 检查 __TAURI_INTERNALS__
-  if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined') {
+  if (typeof tauriWindow.__TAURI_INTERNALS__ !== 'undefined') {
     console.log('[Tauri环境] 检测到 __TAURI_INTERNALS__');
     return true;
   }
@@ -56,7 +64,6 @@ import type {
   CustomerDebt,
   CustomerDebtParams,
   DashboardStats,
-  DailyStats,
   FinancialRecord,
   FinancialRecordParams,
   FolderScanResult,
@@ -173,15 +180,19 @@ export const PatternApi = {
     unitsPerRow?: number,
     rowCount?: number,
     isActive?: boolean,
+    customerId?: string | null,
   ): Promise<Pattern | null> {
+    // Tauri 2.0 默认使用 camelCase 参数名（自动从 Rust 的 snake_case 转换）
     const result = await safeInvoke<Pattern | null>('update_pattern', {
       id,
       name,
-      actual_height: actualHeight,
-      bleed_height: bleedHeight,
-      units_per_row: unitsPerRow,
-      row_count: rowCount,
-      is_active: isActive,
+      actualHeight,
+      bleedHeight,
+      unitsPerRow,
+      rowCount,
+      isActive,
+      // 使用空字符串表示清除客户，undefined 表示不更新
+      customerId: customerId === null ? '' : customerId,
     });
     return result;
   },
@@ -241,7 +252,7 @@ export const OrderApi = {
   },
 
   /**
-   * 完整更新订单（包括客户、订单项、状态、备注）
+   * 完整更新订单（包括客户、订单项、备注）
    */
   async updateFull(data: UpdateOrderFullRequest): Promise<Order | null> {
     const result = await safeInvoke<Order | null>('update_order_full', { request: data });
@@ -249,10 +260,24 @@ export const OrderApi = {
   },
 
   /**
+   * 确认并生产订单
+   */
+  async confirm(id: string): Promise<Order> {
+    return await safeInvoke<Order>('confirm_order', { id });
+  },
+
+  /**
    * 删除订单
    */
   async delete(id: string): Promise<boolean> {
     return await safeInvoke<boolean>('delete_order', { id });
+  },
+
+  /**
+   * 批量删除订单
+   */
+  async batchDelete(ids: string[]): Promise<number> {
+    return await safeInvoke<number>('batch_delete_orders', { ids });
   },
 };
 
@@ -563,6 +588,13 @@ export const SettingsApi = {
   async deleteConfig(key: string): Promise<boolean> {
     return await safeInvoke<boolean>('delete_config', { key });
   },
+
+  /**
+   * 初始化颜色预设种子数据
+   */
+  async seedColorPresets(): Promise<ColorPreset[]> {
+    return await safeInvoke<ColorPreset[]>('seed_color_presets');
+  },
 };
 
 // ============ 颜色预设管理 ============
@@ -586,7 +618,12 @@ export const ColorPresetApi = {
    * 创建颜色预设
    */
   async create(request: CreateColorPresetRequest): Promise<ColorPreset> {
-    return await safeInvoke<ColorPreset>('create_color_preset', request);
+    return await safeInvoke<ColorPreset>('create_color_preset', {
+      name: request.name,
+      displayName: request.displayName,
+      color: request.color,
+      sortOrder: request.sortOrder,
+    });
   },
 
   /**

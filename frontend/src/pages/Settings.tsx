@@ -11,7 +11,6 @@ import {
   Table,
   App,
   Tag,
-  Select,
   Modal,
   Popconfirm,
   Descriptions,
@@ -28,7 +27,7 @@ import {
   DeleteOutlined,
   ClearOutlined,
 } from '@ant-design/icons';
-import type { AppConfig, ColorPreset, SystemLog } from '@/types';
+import type { ColorPreset, SystemLog } from '@/types';
 import { SettingsApi, ColorPresetApi, SystemLogApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 
@@ -37,7 +36,6 @@ const { Title } = Typography;
 export default function Settings() {
   const { message } = App.useApp();
   // ========== 配置管理状态 ==========
-  const [configs, setConfigs] = useState<AppConfig[]>([]);
   const [configForm] = Form.useForm();
   const [configsLoading, setConfigsLoading] = useState(false);
 
@@ -63,7 +61,6 @@ export default function Settings() {
     try {
       setConfigsLoading(true);
       const data = await SettingsApi.getAllConfigs();
-      setConfigs(data);
 
       // 设置表单初始值
       const formValues: Record<string, string> = {};
@@ -81,9 +78,28 @@ export default function Settings() {
   const loadColorPresets = async () => {
     try {
       setColorsLoading(true);
-      const data = await ColorPresetApi.getAll();
+      let data = await ColorPresetApi.getAll();
+
+      // 如果没有数据，自动初始化种子数据
+      if (data.length === 0) {
+        console.log('[颜色预设] 表为空，正在初始化种子数据...');
+        message.loading('正在初始化颜色预设...', 0);
+
+        try {
+          data = await SettingsApi.seedColorPresets();
+          message.destroy();
+          message.success(`已初始化 ${data.length} 个常用颜色预设`);
+        } catch (error) {
+          message.destroy();
+          console.error('[颜色预设] 初始化失败:', error);
+          message.warning('颜色预设初始化失败，请手动添加');
+        }
+      }
+
       setColorPresets(data);
+      console.log('[颜色预设] 加载完成，共', data.length, '条');
     } catch (error) {
+      console.error('[颜色预设] 加载失败:', error);
       message.error('加载颜色预设失败: ' + error);
     } finally {
       setColorsLoading(false);
@@ -123,10 +139,12 @@ export default function Settings() {
     loadColorPresets();
     loadLogs();
     loadLogStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagination.current, pagination.pageSize]);
 
   // ========== 配置管理处理 ==========
@@ -550,6 +568,16 @@ export default function Settings() {
             label="颜色值"
             name="color"
             rules={[{ required: true, message: '请选择颜色' }]}
+            getValueProps={(value) => ({
+              value: value,
+            })}
+            normalize={(value) => {
+              // 将 ColorPicker 对象转换为 hex 字符串
+              if (value && typeof value === 'object' && 'toHexString' in value) {
+                return value.toHexString();
+              }
+              return value;
+            }}
           >
             <ColorPicker showText />
           </Form.Item>

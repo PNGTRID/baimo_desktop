@@ -178,7 +178,7 @@ pub async fn update_color(
         let guard = db.sqlite().connection().lock().unwrap();
 
         let mut sql_params: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-        sql_params.push(&id.as_str());
+        sql_params.push(id.as_str());
 
         guard.prepare(&sql)
             .map_err(|e| format!("Failed to prepare statement: {}", e))?
@@ -278,7 +278,7 @@ pub async fn create_colors_batch(
             tx.execute(
                 "INSERT INTO pattern_colors (id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                &[
+                [
                     &id as &dyn rusqlite::ToSql,
                     &color.pattern_id,
                     &color.name,

@@ -1,0 +1,435 @@
+/**
+ * 白墨记账系统 - 全局样式
+ * 设计语言：新东方主义美学
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ========== CSS 变量 ========== */
+:root {
+  --color-primary: #1a5f4c;
+  --color-primary-hover: #237a62;
+  --color-primary-light: #e8f3f0;
+  --color-accent: #e07a5f;
+  --color-accent-light: #fff0ed;
+  --color-background: #faf9f6;
+  --color-surface: #ffffff;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
+  --color-border: #e8e6e1;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --shadow-sm: 0 1px 2px 0 rgba(26, 95, 76, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(26, 95, 76, 0.08);
+  --shadow-lg: 0 10px 15px -3px rgba(26, 95, 76, 0.08);
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.35s ease;
+}
+
+/* ========== 基础重置 ========== */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-family);
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* ========== 滚动条样式 ========== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--border-radius-sm);
+  transition: background var(--transition-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d0cfc9;
+}
+
+/* ========== 文本选择 ========== */
+::selection {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+/* ========== 标题样式 ========== */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+h1 { font-size: 30px; }
+h2 { font-size: 24px; }
+h3 { font-size: 20px; }
+h4 { font-size: 18px; }
+h5 { font-size: 16px; }
+h6 { font-size: 14px; }
+
+/* ========== 段落和文本 ========== */
+p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+/* ========== 链接样式 ========== */
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+}
+
+/* ========== 数字字体（财务数据） ========== */
+.font-mono,
+.ant-statistic-content-value,
+.ant-statistic-content-value-decimal,
+.ant-table-cell-row-number {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== 通用工具类 ========== */
+.text-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
+
+.text-success {
+  color: #52c41a;
+}
+
+.text-warning {
+  color: #faad14;
+}
+
+.text-error {
+  color: #ff4d4f;
+}
+
+.bg-primary-light {
+  background-color: var(--color-primary-light);
+}
+
+.bg-accent-light {
+  background-color: var(--color-accent-light);
+}
+
+/* ========== 卡片增强 ========== */
+.ant-card {
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
+}
+
+.ant-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #d0cfc9;
+}
+
+/* ========== 按钮增强 ========== */
+.ant-btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: 500;
+  transition: all var(--transition-normal);
+}
+
+.ant-btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(26, 95, 76, 0.25);
+}
+
+.ant-btn-primary:active {
+  transform: translateY(0);
+}
+
+/* 强调色按钮 */
+.ant-btn-accent {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.ant-btn-accent:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* ========== 表格增强 ========== */
+.ant-table {
+  font-size: 13px;
+}
+
+.ant-table-thead > tr > th {
+  font-weight: 600;
+  background-color: var(--color-background) !important;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: var(--color-primary-light) !important;
+}
+
+.ant-table-tbody > tr > td {
+  transition: background-color var(--transition-fast);
+}
+
+/* ========== 输入框增强 ========== */
+.ant-input,
+.ant-input-number,
+.ant-select-selector {
+  transition: all var(--transition-normal);
+}
+
+.ant-input:focus,
+.ant-input-number:focus,
+.ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 3px rgba(26, 95, 76, 0.1);
+}
+
+/* ========== 标签增强 ========== */
+.ant-tag {
+  border-radius: var(--border-radius-sm);
+  font-weight: 500;
+  padding: 2px 8px;
+}
+
+/* ========== 统计卡片增强 ========== */
+.stat-card {
+  background: var(--color-surface);
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-card:hover::before {
+  opacity: 1;
+}
+
+.stat-card .ant-statistic-title {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.stat-card .ant-statistic-content {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* ========== 模态框增强 ========== */
+.ant-modal-content {
+  border-radius: var(--border-radius-lg) !important;
+  overflow: hidden;
+}
+
+.ant-modal-header {
+  border-bottom: 1px solid var(--color-border);
+  padding: 20px 24px;
+}
+
+.ant-modal-body {
+  padding: 24px;
+}
+
+.ant-modal-footer {
+  border-top: 1px solid var(--color-border);
+  padding: 16px 24px;
+}
+
+/* ========== 菜单项动画 ========== */
+.ant-menu-item {
+  transition: all var(--transition-normal) !important;
+  border-radius: var(--border-radius-md) !important;
+  margin: 4px 8px !important;
+  width: calc(100% - 16px);
+}
+
+.ant-menu-item-selected {
+  background-color: var(--color-primary) !important;
+}
+
+.ant-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ========== 加载动画 ========== */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.skeleton-pulse {
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ========== 淡入动画 ========== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+/* 延迟动画 */
+.fade-in-delay-1 { animation-delay: 0.1s; }
+.fade-in-delay-2 { animation-delay: 0.2s; }
+.fade-in-delay-3 { animation-delay: 0.3s; }
+.fade-in-delay-4 { animation-delay: 0.4s; }
+.fade-in-delay-5 { animation-delay: 0.5s; }
+
+/* ========== 缩放动画 ========== */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.3s ease forwards;
+}
+
+/* ========== 工具提示 ========== */
+.ant-tooltip-inner {
+  background-color: #1a1a1a;
+  border-radius: var(--border-radius-sm);
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.ant-tooltip-arrow-content {
+  background-color: #1a1a1a;
+}
+
+/* ========== 进度条 ========== */
+.ant-progress-bg {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+}
+
+/* ========== 徽章 ========== */
+.ant-badge-count {
+  background-color: var(--color-accent);
+  box-shadow: 0 2px 4px rgba(224, 122, 95, 0.3);
+}
+
+/* ========== 分隔线 ========== */
+.ant-divider {
+  border-color: var(--color-border);
+}
+
+/* ========== 空状态 ========== */
+.ant-empty-description {
+  color: var(--color-text-tertiary);
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 768px) {
+  .stat-card {
+    padding: 16px;
+  }
+
+  .stat-card .ant-statistic-content {
+    font-size: 24px;
+  }
+}
+
+/* ========== 打印样式 ========== */
+@media print {
+  .ant-layout-sider,
+  .ant-btn,
+  .ant-pagination {
+    display: none !important;
+  }
+
+  .ant-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+}

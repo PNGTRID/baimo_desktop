@@ -4,7 +4,7 @@
 
 use crate::models::{
     AppConfig, UpdateConfigRequest,
-    ColorPreset, CreateColorPresetRequest, UpdateColorPresetRequest,
+    ColorPreset, UpdateColorPresetRequest,
     SystemLog, CreateSystemLogRequest, SystemLogParams, PaginatedSystemLogs,
 };
 use crate::services::Database;
@@ -154,7 +154,10 @@ pub async fn get_color_presets(db: State<'_, Database>) -> Result<Vec<ColorPrese
 /// 创建颜色预设
 #[tauri::command]
 pub async fn create_color_preset(
-    request: CreateColorPresetRequest,
+    name: String,
+    display_name: Option<String>,
+    color: String,
+    sort_order: Option<i32>,
     db: State<'_, Database>,
 ) -> Result<ColorPreset, String> {
     let id = uuid::Uuid::new_v4().to_string();
@@ -162,7 +165,7 @@ pub async fn create_color_preset(
 
     let exists: i32 = db.sqlite().query_row(
         "SELECT COUNT(*) FROM color_presets WHERE name = ?1",
-        &[&request.name as &dyn rusqlite::ToSql],
+        &[&name as &dyn rusqlite::ToSql],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to check name: {}", e))?
     .unwrap_or(0);
@@ -171,7 +174,7 @@ pub async fn create_color_preset(
         return Err("Color preset with this name already exists".to_string());
     }
 
-    let max_sort: i32 = match request.sort_order {
+    let max_sort: i32 = match sort_order {
         Some(sort) => sort,
         None => {
             db.sqlite().query_row(
@@ -188,9 +191,9 @@ pub async fn create_color_preset(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         &[
             &id as &dyn rusqlite::ToSql,
-            &request.name,
-            &request.display_name,
-            &request.color,
+            &name,
+            &display_name,
+            &color,
             &max_sort,
             &true,
             &now,
@@ -271,7 +274,7 @@ pub async fn update_color_preset(
         let guard = db.sqlite().connection().lock().unwrap();
 
         let mut sql_params: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-        sql_params.push(&id.as_str());
+        sql_params.push(id.as_str());
 
         guard.prepare(&sql)
             .map_err(|e| format!("Failed to prepare statement: {}", e))?

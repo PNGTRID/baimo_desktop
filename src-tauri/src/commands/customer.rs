@@ -56,34 +56,66 @@ pub async fn get_customer_by_id(
     }
 }
 
-// 创建客户
+// 创建客户（同时自动创建同名文件夹）
 #[tauri::command]
 pub async fn create_customer(
     request: CreateCustomerRequest,
     db: State<'_, Database>,
 ) -> Result<Customer, String> {
     // 生成 UUID
-    let id = uuid::Uuid::new_v4().to_string();
+    let customer_id = uuid::Uuid::new_v4().to_string();
+    let folder_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
 
-    db.sqlite().execute(
-        "INSERT INTO customers (id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        &[
-            &id as &dyn rusqlite::ToSql,
-            &request.name,
-            &(request.balance.unwrap_or(0.0)),
-            &(request.credit_limit.unwrap_or(0.0)),
-            &(request.unit_price.unwrap_or(0.0)),
-            &request.notes.as_deref().unwrap_or(""),
-            &true, // isActive
-            &now,
-            &now,
-        ],
-    ).map_err(|e| format!("Failed to create customer: {:?}", e))?;
+    // 使用事务确保原子性：同时创建客户和文件夹
+    {
+        let conn = db.sqlite().connection();
+        let conn = conn.lock().unwrap();
+        let tx = conn.unchecked_transaction()
+            .map_err(|e| format!("Failed to start transaction: {:?}", e))?;
+
+        // 1. 插入客户
+        tx.execute(
+            "INSERT INTO customers (id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                &customer_id,
+                &request.name,
+                request.balance.unwrap_or(0.0),
+                request.credit_limit.unwrap_or(0.0),
+                request.unit_price.unwrap_or(0.0),
+                request.notes.as_deref().unwrap_or(""),
+                true, // isActive
+                now,
+                now,
+            ],
+        ).map_err(|e| format!("Failed to create customer: {:?}", e))?;
+
+        // 2. 自动创建客户同名文件夹
+        let folder_path = format!("/{}", request.name);
+        tx.execute(
+            "INSERT INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                &folder_id,
+                &request.name,
+                None::<String>, // parent_id 为空（根级别）
+                0,              // level = 0
+                &folder_path,
+                0,              // sort_order
+                &customer_id,   // 关联到客户
+                false,          // is_system
+                true,           // isActive
+                now,
+                now,
+            ],
+        ).map_err(|e| format!("Failed to create customer folder: {:?}", e))?;
+
+        tx.commit().map_err(|e| format!("Failed to commit transaction: {:?}", e))?;
+    }
 
     // 获取刚创建的客户
-    get_customer_by_id(id, db).await.map(|c| c.unwrap())
+    get_customer_by_id(customer_id, db).await.map(|c| c.unwrap())
 }
 
 // 更新客户
@@ -139,7 +171,7 @@ pub async fn update_customer(
 
         // 使用原始 SQL 执行
         let mut sql_params: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-        sql_params.push(&id.as_str());
+        sql_params.push(id.as_str());
 
         conn.prepare(&sql)
             .map_err(|e| format!("Failed to prepare statement: {:?}", e))?

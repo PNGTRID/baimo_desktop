@@ -44,6 +44,7 @@ pub struct FolderTreeNode {
     pub parent_id: Option<String>,
     pub level: i32,
     pub path: String,
+    pub customer_id: Option<String>,
     pub children: Vec<FolderTreeNode>,
     pub pattern_count: i32,
 }

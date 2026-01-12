@@ -26,3 +26,6 @@ pub mod pattern;
 
 // TIFF 文件处理
 pub mod tiff;
+
+// 种子数据初始化
+pub mod seed_data;

@@ -19,7 +19,7 @@ import {
   CalendarOutlined,
 } from '@ant-design/icons';
 import type { Customer } from '@/types';
-import { CustomerApi, PatternFolderApi } from '@/services/tauriApi';
+import { CustomerApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
 
@@ -50,8 +50,9 @@ export default function Customers() {
   };
 
   // 组件挂载时加载数据
-  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
     loadCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 打开创建/编辑模态框
@@ -88,22 +89,10 @@ export default function Customers() {
           message.success('客户更新成功');
         }
       } else {
-        // 创建客户
+        // 创建客户（后端自动创建同名文件夹）
         const newCustomer = await CustomerApi.create(values);
         setCustomers([...customers, newCustomer]);
-
-        // 自动创建对应文件夹
-        try {
-          await PatternFolderApi.create({
-            name: newCustomer.name,
-            customerId: newCustomer.id,
-            parentId: null, // 根级别
-          });
-          message.success('客户和文件夹创建成功');
-        } catch (folderError) {
-          console.error('创建客户文件夹失败:', folderError);
-          message.success('客户创建成功，但文件夹创建失败');
-        }
+        message.success('客户创建成功');
       }
 
       setIsModalOpen(false);
@@ -228,12 +217,23 @@ export default function Customers() {
 
   return (
     <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>
+          客户管理
+        </h2>
+        <p style={{ color: '#666', margin: 0, fontSize: 13 }}>
+          管理客户信息、信用额度和余额
+        </p>
+      </div>
+
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => handleOpenModal()}
+            style={{ fontWeight: 500 }}
           >
             新建客户
           </Button>

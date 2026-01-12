@@ -1,20 +1,18 @@
-import { useState } from 'react';
-import { ConfigProvider, theme, App as AntdApp } from 'antd';
+import { ConfigProvider, App as AntdApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import Layout from './components/layout/Layout';
+import { antdTheme } from './styles/theme';
+import './styles/global.css';
 
+/**
+ * 白墨记账系统 - 应用根组件
+ * 使用新东方主义美学设计语言
+ */
 function App() {
-  const [darkMode] = useState(false);
-
   return (
     <ConfigProvider
       locale={zhCN}
-      theme={{
-        algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          colorPrimary: '#1890ff',
-        },
-      }}
+      theme={antdTheme}
     >
       <AntdApp>
         <Layout />

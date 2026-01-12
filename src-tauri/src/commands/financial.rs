@@ -157,7 +157,7 @@ pub async fn create_financial_record(
         tx.execute(
             "INSERT INTO financial_records (id, type, amount, description, order_id, order_item_id, customer_id, balance_before, balance_after, operator_name, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            &[
+            [
                 &id as &dyn rusqlite::ToSql,
                 &request.record_type,
                 &request.amount,
@@ -174,7 +174,7 @@ pub async fn create_financial_record(
 
         tx.execute(
             "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
-            &[&balance_after as &dyn rusqlite::ToSql, &now, &request.customer_id],
+            [&balance_after as &dyn rusqlite::ToSql, &now, &request.customer_id],
         )?;
 
         Ok(())
@@ -363,7 +363,7 @@ pub async fn adjust_customer_balance(
         tx.execute(
             "INSERT INTO financial_records (id, type, amount, description, customer_id, balance_before, balance_after, operator_name, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            &[
+            [
                 &id as &dyn rusqlite::ToSql,
                 &"ADJUSTMENT",
                 &amount,
@@ -378,7 +378,7 @@ pub async fn adjust_customer_balance(
 
         tx.execute(
             "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
-            &[&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
+            [&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
         )?;
 
         Ok(())

@@ -66,6 +66,9 @@ pub struct Pattern {
     pub row_count: i32,
     pub local_file_path: Option<String>,
     pub customer_id: Option<String>,
+    pub folder_id: Option<String>,  // 所属文件夹
+    pub preview_image: Option<String>,  // 图案预览图(Base64 或文件路径)
+    pub color_type: Option<String>,  // 颜色类型：SINGLE（单色）或 MULTI（多色）
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -104,7 +107,8 @@ pub struct Order {
     pub customer_id: String,
     pub customer_name: String,
     pub total_amount: f64,
-    pub status: String,
+    pub is_confirmed: bool,         // 是否已确认并生产
+    pub confirmed_at: Option<String>, // 确认并生产时间（ISO 8601）
     pub notes: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -123,6 +127,7 @@ pub struct OrderPatternItem {
     pub pricing_mode: String,
     pub unit_price: f64,
     pub total_price: f64,
+    pub color_variant_id: Option<String>,  // 颜色变体 ID
 }
 
 /// 创建订单请求
@@ -142,14 +147,14 @@ pub struct CreateOrderItemRequest {
     pub quantity: i32,
     pub area: Option<f64>,
     pub pricing_mode: String,
+    pub color_variant_id: Option<String>,  // 颜色变体 ID
 }
 
-/// 更新订单请求
+/// 更新订单请求（仅备注）
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOrderRequest {
     pub id: String,
-    pub status: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -160,7 +165,6 @@ pub struct UpdateOrderFullRequest {
     pub id: String,
     pub customer_id: String,
     pub items: Vec<CreateOrderItemRequest>,
-    pub status: String,
     pub notes: Option<String>,
 }
 
@@ -223,7 +227,6 @@ pub use system_log::{
 
 pub use color_preset::{
     ColorPreset,
-    CreateColorPresetRequest,
     UpdateColorPresetRequest,
 };
 

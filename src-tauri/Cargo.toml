@@ -26,6 +26,7 @@ uuid = { version = "1.0", features = ["v4"] }
 base64 = "0.22"
 image = "0.24"
 tiff = "0.9"
+weezl = "0.1"  # LZW 解压缩（用于 TIFF）
 walkdir = "2.5"
 rfd = "0.16"
 
@@ -35,3 +36,7 @@ rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+
+[lints.rust]
+# Tauri 使用 cfg(mobile) 条件编译，需要告诉 rustc 这是预期的
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mobile)'] }

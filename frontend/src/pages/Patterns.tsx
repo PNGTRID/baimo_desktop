@@ -27,9 +27,11 @@ import {
   Result,
   Statistic,
   List,
+  Badge,
 } from 'antd';
 import {
   FileImageOutlined,
+  FormatPainterOutlined,
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -41,15 +43,24 @@ import {
   FolderOpenOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
+  StarFilled,
 } from '@ant-design/icons';
 import type { TreeDataNode } from 'antd';
-import { PatternApi, TiffApi, PatternFolderApi, PatternColorApi, FileDialogApi } from '@/services/tauriApi';
+import { PatternApi, TiffApi, PatternFolderApi, PatternColorApi, FileDialogApi, isTauri } from '@/services/tauriApi';
 import type { Pattern, FolderTreeNode, PatternColor, FolderScanResult, ScanProgress } from '@/types';
 import { useMemo } from 'react';
 import ColorPresetSelector from '@/components/pattern/ColorPresetSelector';
 import ColorVariantUploader from '@/components/pattern/ColorVariantUploader';
 
 const { Text } = Typography;
+
+// 颜色变体类型
+interface ColorVariant {
+  name: string;
+  color: string;
+  isDefault?: boolean;
+  image?: string;
+}
 
 export default function Patterns() {
   const { message } = App.useApp();
@@ -79,8 +90,10 @@ export default function Patterns() {
   const [loadingColors, setLoadingColors] = useState(false);
 
   // 编辑表单的颜色变体状态
-  const [newColorVariants, setNewColorVariants] = useState<any[]>([]);
-  const [originalColorVariants, setOriginalColorVariants] = useState<any[]>([]);
+  const [newColorVariants, setNewColorVariants] = useState<ColorVariant[]>([]);
+
+  // 快速添加颜色变体状态
+  const [colorPresets, setColorPresets] = useState<Array<{ id: string; name: string; displayName?: string; color: string }>>([]);
 
   // 文件夹管理状态
   const [folderModalVisible, setFolderModalVisible] = useState(false);
@@ -268,10 +281,12 @@ export default function Patterns() {
     }
   };
 
-  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
     loadPatterns();
     loadFolderTree();
     loadCustomers();
+    loadColorPresets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ========== 数据处理 ==========
@@ -283,8 +298,7 @@ export default function Patterns() {
 
       // 文件夹筛选
       if (selectedFolderId) {
-        // TODO: 需要在 Pattern 模型中添加 folderId 字段
-        // 暂时跳过文件夹筛选
+        if (pattern.folderId !== selectedFolderId) return false;
       }
 
       // 文本搜索
@@ -335,10 +349,38 @@ export default function Patterns() {
     ...convertFolderTree(folderTree),
   ];
 
+  // ========== 辅助函数 ==========
+  // 获取选中文件夹对应的客户ID
+  const getSelectedCustomerId = (): string | undefined => {
+    if (!selectedFolderId) return undefined;
+
+    // 递归查找文件夹
+    const findFolder = (nodes: FolderTreeNode[], targetId: string): FolderTreeNode | undefined => {
+      for (const node of nodes) {
+        if (node.id === targetId) return node;
+        if (node.children.length > 0) {
+          const found = findFolder(node.children, targetId);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
+    const folder = findFolder(folderTree, selectedFolderId);
+    return folder?.customerId;
+  };
+
   // ========== 事件处理 ==========
   const handleFolderSelect = (selectedKeys: React.Key[]) => {
     const key = selectedKeys[0] as string;
-    setSelectedFolderId(key === 'all' ? undefined : key);
+
+    if (key === 'all') {
+      // 全部图案
+      setSelectedFolderId(undefined);
+    } else {
+      // 文件夹筛选
+      setSelectedFolderId(key);
+    }
   };
 
   // 从 TIFF 文件创建
@@ -366,6 +408,7 @@ export default function Patterns() {
         name: metadata.fileName.replace(/\.tiff?$/i, ''),
         localFilePath: metadata.filePath,
         actualHeight: Math.round(metadata.heightCm * 10) / 10,
+        customerId: getSelectedCustomerId(),
       });
 
       message.success('图案创建成功');
@@ -381,7 +424,13 @@ export default function Patterns() {
     setEditingPattern(null);
     form.resetFields();
     setNewColorVariants([]);
-    setOriginalColorVariants([]);
+    // 如果选中了客户文件夹，自动填充客户
+    const customerId = getSelectedCustomerId();
+    if (customerId) {
+      form.setFieldValue('customerId', customerId);
+    } else {
+      form.setFieldValue('customerId', undefined);
+    }
     setModalVisible(true);
   };
 
@@ -394,14 +443,35 @@ export default function Patterns() {
       const variants = await PatternColorApi.getByPatternId(pattern.id);
       const variantsData = Array.isArray(variants) ? variants : [];
       setNewColorVariants([...variantsData]);
-      setOriginalColorVariants([...variantsData]);
     } catch (error) {
       console.error('加载颜色变体失败:', error);
       setNewColorVariants([]);
-      setOriginalColorVariants([]);
     }
 
     setModalVisible(true);
+  };
+
+  const handleOpenColorModal = async (pattern: Pattern) => {
+    setCurrentPattern(pattern);
+    setColorModalVisible(true);
+    await loadColors(pattern.id);
+  };
+
+  const handleCloseColorModal = async () => {
+    setColorModalVisible(false);
+    // 同步更新编辑模态框中的颜色变体列表
+    if (editingPattern) {
+      try {
+        const variants = await PatternColorApi.getByPatternId(editingPattern.id);
+        const variantsData = Array.isArray(variants) ? variants : [];
+        setNewColorVariants([...variantsData]);
+      } catch (error) {
+        console.error('同步颜色变体失败:', error);
+      }
+    }
+    setColors([]);
+    setCurrentPattern(null);
+    colorForm.resetFields();
   };
 
   const handleDelete = async (id: string) => {
@@ -420,8 +490,7 @@ export default function Patterns() {
       return;
     }
 
-    const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-    if (!isTauri) {
+    if (!isTauri()) {
       message.warning('图片预览功能仅在桌面应用中可用');
       return;
     }
@@ -440,104 +509,239 @@ export default function Patterns() {
   };
 
   // 卡片渲染函数
-  const renderPatternCard = (pattern: Pattern) => (
-    <Card
-      key={pattern.id}
-      hoverable
-      style={{
-        height: '100%',
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}
-      bodyStyle={{ padding: 0 }}
-    >
-      <div style={{ height: '120px', position: 'relative', overflow: 'hidden', backgroundColor: '#f8f9fa' }}>
-        <div
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-          onClick={() => handlePreview(pattern)}
-        >
-          <FileImageOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
+  const renderPatternCard = (pattern: Pattern) => {
+    // 获取图案的颜色变体数量
+    const colorVariantsCount = newColorVariants.length > 0 && editingPattern?.id === pattern.id
+      ? newColorVariants.length
+      : 0;
+
+    return (
+      <Card
+        key={pattern.id}
+        hoverable
+        style={{
+          height: '100%',
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div style={{ height: '120px', position: 'relative', overflow: 'hidden', backgroundColor: '#f8f9fa' }}>
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+            onClick={() => handlePreview(pattern)}
+          >
+            {pattern.previewImage ? (
+              <img
+                src={pattern.previewImage}
+                alt={pattern.name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+              />
+            ) : (
+              <FileImageOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
+            )}
+          </div>
+          <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+            <Tag color={pattern.isActive ? 'success' : 'default'}>{pattern.isActive ? '启用' : '禁用'}</Tag>
+          </div>
         </div>
-        <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+        <div style={{ padding: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {pattern.name}
+          </div>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+            {pattern.code}
+          </div>
+          {pattern.customerId && (
+            <div style={{ fontSize: 12, color: '#1890ff', marginBottom: 4, fontWeight: 500 }}>
+              👤 {customers.find(c => c.id === pattern.customerId)?.name || '未知客户'}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8 }}>
+            {pattern.unitsPerRow}个/行 × {pattern.actualHeight}cm
+          </div>
+
+          {/* 颜色变体预览区域 */}
+          {colorVariantsCount > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <Badge count={colorVariantsCount} size="small">
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {newColorVariants.slice(0, 4).map((variant, index) => (
+                    <Tooltip title={variant.name} key={index}>
+                      <div
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 4,
+                          backgroundColor: variant.color || '#f0f0f0',
+                          border: '1px solid #d9d9d9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                      >
+                        {!variant.color && (
+                          <FormatPainterOutlined style={{ fontSize: 10, color: '#bfbfbf' }} />
+                        )}
+                      </div>
+                    </Tooltip>
+                  ))}
+                  {colorVariantsCount > 4 && (
+                    <Text style={{ fontSize: 10, color: '#8c8c8c', marginLeft: 4 }}>
+                      +{colorVariantsCount - 4}
+                    </Text>
+                  )}
+                </div>
+              </Badge>
+            </div>
+          )}
+
+          <Space size="small" style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(pattern)}>
+              编辑
+            </Button>
+            <Popconfirm title="确认删除" onConfirm={() => handleDelete(pattern.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        </div>
+      </Card>
+    );
+  };
+
+  // 列表渲染函数
+  const renderPatternListItem = (pattern: Pattern) => {
+    // 获取图案的颜色变体数量
+    const colorVariantsCount = newColorVariants.length > 0 && editingPattern?.id === pattern.id
+      ? newColorVariants.length
+      : 0;
+
+    return (
+      <div
+        key={pattern.id}
+        style={{
+          backgroundColor: '#fff',
+          border: '1px solid #e8e8e8',
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 12,
+          display: 'flex',
+          gap: 16,
+          alignItems: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+        }}
+        onClick={() => handleEdit(pattern)}
+      >
+        <div style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', flexShrink: 0, backgroundColor: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {pattern.previewImage ? (
+            <img
+              src={pattern.previewImage}
+              alt={pattern.name}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <FileImageOutlined style={{ fontSize: 32, color: '#bfbfbf' }} />
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {pattern.name}
+          </div>
+          <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 4 }}>
+            {pattern.code}
+          </div>
+          {pattern.customerId && (
+            <div style={{ fontSize: 13, color: '#1890ff', marginBottom: 4, fontWeight: 500 }}>
+              👤 {customers.find(c => c.id === pattern.customerId)?.name || '未知客户'}
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8 }}>
+            {pattern.unitsPerRow}个/行 × {pattern.actualHeight}cm
+          </div>
+
+          {/* 颜色变体预览区域 - 列表视图 */}
+          {colorVariantsCount > 0 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Badge count={colorVariantsCount} size="small">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {newColorVariants.slice(0, 4).map((variant, index) => (
+                    <Tooltip title={variant.name} key={index}>
+                      <div
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 4,
+                          backgroundColor: variant.color || '#f0f0f0',
+                          border: '1px solid #d9d9d9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                      >
+                        {!variant.color && (
+                          <FormatPainterOutlined style={{ fontSize: 12, color: '#bfbfbf' }} />
+                        )}
+                      </div>
+                    </Tooltip>
+                  ))}
+                  {colorVariantsCount > 4 && (
+                    <Text style={{ fontSize: 11, color: '#8c8c8c' }}>
+                      +{colorVariantsCount - 4}
+                    </Text>
+                  )}
+                </div>
+              </Badge>
+            </div>
+          )}
+        </div>
+        <Space direction="vertical" size="small">
           <Tag color={pattern.isActive ? 'success' : 'default'}>{pattern.isActive ? '启用' : '禁用'}</Tag>
-        </div>
-      </div>
-      <div style={{ padding: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {pattern.name}
-        </div>
-        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8 }}>
-          {pattern.code}
-        </div>
-        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 12 }}>
-          {pattern.unitsPerRow}个/行 × {pattern.actualHeight}mm
-        </div>
-        <Space size="small" style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(pattern)}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(pattern); }}>
             编辑
           </Button>
           <Popconfirm title="确认删除" onConfirm={() => handleDelete(pattern.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()}>
               删除
             </Button>
           </Popconfirm>
         </Space>
       </div>
-    </Card>
-  );
-
-  // 列表渲染函数
-  const renderPatternListItem = (pattern: Pattern) => (
-    <div
-      key={pattern.id}
-      style={{
-        backgroundColor: '#fff',
-        border: '1px solid #e8e8e8',
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 12,
-        display: 'flex',
-        gap: 16,
-        alignItems: 'center',
-        cursor: 'pointer',
-        transition: 'all 0.2s',
-      }}
-      onClick={() => handleEdit(pattern)}
-    >
-      <div style={{ width: 80, height: 80, borderRadius: 8, overflow: 'hidden', flexShrink: 0, backgroundColor: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <FileImageOutlined style={{ fontSize: 32, color: '#bfbfbf' }} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {pattern.name}
-        </div>
-        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8 }}>
-          {pattern.code}
-        </div>
-        <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-          {pattern.unitsPerRow}个/行 × {pattern.actualHeight}mm
-        </div>
-      </div>
-      <Space direction="vertical" size="small">
-        <Tag color={pattern.isActive ? 'success' : 'default'}>{pattern.isActive ? '启用' : '禁用'}</Tag>
-        <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); handleEdit(pattern); }}>
-          编辑
-        </Button>
-        <Popconfirm title="确认删除" onConfirm={() => handleDelete(pattern.id)}>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()}>
-            删除
-          </Button>
-        </Popconfirm>
-      </Space>
-    </div>
-  );
+    );
+  };
 
   const handleSubmit = async () => {
     try {
@@ -552,6 +756,7 @@ export default function Patterns() {
           values.unitsPerRow,
           values.rowCount,
           values.isActive,
+          values.customerId ?? null,  // 传递 null 表示清除客户
         );
         message.success('更新成功');
       } else {
@@ -562,6 +767,7 @@ export default function Patterns() {
           bleedHeight: values.bleedHeight,
           unitsPerRow: values.unitsPerRow,
           rowCount: values.rowCount,
+          customerId: values.customerId,
         });
         message.success('创建成功');
       }
@@ -574,12 +780,6 @@ export default function Patterns() {
   };
 
   // ========== 颜色变体管理 ==========
-  const handleManageColors = async (pattern: Pattern) => {
-    setCurrentPattern(pattern);
-    await loadColors(pattern.id);
-    setColorModalVisible(true);
-  };
-
   const handleAddColor = async () => {
     try {
       const values = await colorForm.validateFields();
@@ -627,6 +827,51 @@ export default function Patterns() {
     }
   };
 
+  // 快速添加预设颜色变体
+  const handleQuickAddPresetVariant = async (preset: { name: string; displayName?: string; color: string }) => {
+    if (!editingPattern) {
+      message.warning('请先选择要编辑的图案');
+      return;
+    }
+
+    const variantName = preset.displayName || preset.name || '未命名颜色';
+
+    // 检查是否已存在相同名称的颜色变体
+    const exists = newColorVariants.some(v => v.name === variantName);
+    if (exists) {
+      message.warning(`颜色变体"${variantName}"已存在`);
+      return;
+    }
+
+    try {
+      // 调用 API 创建颜色变体
+      const newColor = await PatternColorApi.create({
+        patternId: editingPattern.id,
+        name: variantName,
+        color: preset.color,
+      });
+
+      message.success(`已添加颜色变体: ${variantName}`);
+
+      // 更新本地状态
+      setNewColorVariants([...newColorVariants, newColor]);
+    } catch (error) {
+      message.error('添加失败: ' + error);
+    }
+  };
+
+  // 加载颜色预设
+  const loadColorPresets = async () => {
+    try {
+      const { ColorPresetApi } = await import('@/services/tauriApi');
+      const data = await ColorPresetApi.getAll();
+      // 只显示激活的预设，按排序字段排序
+      setColorPresets(data.filter((p) => p.isActive).sort((a, b) => a.sortOrder - b.sortOrder));
+    } catch (error) {
+      console.error('加载颜色预设失败:', error);
+    }
+  };
+
   // ========== 批量扫描功能 ==========
   const handleBatchScan = async () => {
     try {
@@ -646,6 +891,8 @@ export default function Patterns() {
 
       const result = await PatternApi.scanFolder({
         folderPath: selected,
+        customerId: getSelectedCustomerId(),
+        parentFolderId: selectedFolderId,
       });
 
       setScanResult(result);
@@ -721,11 +968,21 @@ export default function Patterns() {
   // ========== 表格列定义 ==========
   return (
     <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>
+          图案管理
+        </h2>
+        <p style={{ color: '#666', margin: 0, fontSize: 13 }}>
+          管理印花图案库、TIFF 文件和颜色变体
+        </p>
+      </div>
+
       <Row gutter={16} style={{ height: 'calc(100vh - 180px)' }}>
         {/* 左侧文件夹树 */}
         <Col span={5}>
           <Card
-            title="文件夹"
+            title={<span style={{ fontSize: 15, fontWeight: 600 }}>文件夹</span>}
             extra={
               <Button
                 type="text"
@@ -772,7 +1029,7 @@ export default function Patterns() {
                 <Button onClick={loadPatterns} loading={loading}>
                   刷新
                 </Button>
-                <Button.Group>
+                <Space.Compact>
                   <Button
                     icon={<AppstoreOutlined />}
                     type={viewMode === 'grid' ? 'primary' : 'default'}
@@ -783,7 +1040,7 @@ export default function Patterns() {
                     type={viewMode === 'list' ? 'primary' : 'default'}
                     onClick={() => setViewMode('list')}
                   />
-                </Button.Group>
+                </Space.Compact>
               </Space>
             </Space>
 
@@ -812,7 +1069,9 @@ export default function Patterns() {
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40 }}>
-              <Spin size="large" tip="加载中..." />
+              <Spin size="large" tip="加载中...">
+                <div style={{ minHeight: 100 }} />
+              </Spin>
             </div>
           ) : filteredPatterns.length === 0 ? (
             <Empty description="暂无图案" style={{ marginTop: 40 }} />
@@ -845,8 +1104,8 @@ export default function Patterns() {
           form={form}
           layout="vertical"
           initialValues={{
-            actualHeight: 100,
-            bleedHeight: 20,
+            actualHeight: 10,   // 默认 10cm
+            bleedHeight: 2,     // 默认 2cm
             unitsPerRow: 10,
             rowCount: 10,
             isActive: true,
@@ -856,68 +1115,74 @@ export default function Patterns() {
           <Form.Item name="rowCount" hidden>
             <InputNumber />
           </Form.Item>
-          <Form.Item
-            label="图案编号"
-            name="code"
-            rules={!editingPattern ? [{ required: true, message: '请输入图案编号' }] : []}
-          >
-            <Input placeholder="留空自动生成" disabled={!!editingPattern} />
-          </Form.Item>
 
-          <Form.Item
-            label="图案名称"
-            name="name"
-            rules={[{ required: true, message: '请输入图案名称' }]}
-          >
-            <Input placeholder="例如：花卉图案001" />
-          </Form.Item>
-
-          <Form.Item
-            label="所属客户"
-            name="customerId"
-            help="留空表示共享图案（不属于任何客户）"
-          >
-            <Select
-              placeholder="请选择所属客户"
-              allowClear
-              showSearch
-              filterOption={(input, option) =>
-                (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              onChange={handlePatternCustomerChange}
-              options={customers.map(c => ({ label: c.name, value: c.id }))}
-            />
-          </Form.Item>
-
+          {/* 第一排：图案编号、图案名称、所属客户 */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item
-                label="实际高度 (mm)"
-                name="actualHeight"
-                rules={[{ required: true, message: '请输入实际高度' }]}
+                label="图案编号"
+                name="code"
+                rules={!editingPattern ? [{ required: true, message: '请输入图案编号' }] : []}
               >
-                <InputNumber min={1} style={{ width: '100%' }} />
+                <Input placeholder="留空自动生成" disabled={!!editingPattern} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item
-                label="出血高度 (mm)"
-                name="bleedHeight"
-                rules={[{ required: true, message: '请输入出血高度' }]}
+                label="图案名称"
+                name="name"
+                rules={[{ required: true, message: '请输入图案名称' }]}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <Input placeholder="例如：花卉图案001" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="所属客户"
+                name="customerId"
+                help="留空表示共享图案"
+              >
+                <Select
+                  placeholder="请选择所属客户"
+                  allowClear
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  onChange={handlePatternCustomerChange}
+                  options={customers.map(c => ({ label: c.name, value: c.id }))}
+                />
               </Form.Item>
             </Col>
           </Row>
 
+          {/* 第二排：实际高度、每行个数、出血高度 */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={8}>
+              <Form.Item
+                label="实际高度 (cm)"
+                name="actualHeight"
+                rules={[{ required: true, message: '请输入实际高度' }]}
+              >
+                <InputNumber min={0.1} step={0.1} precision={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item
                 label="每行个数"
                 name="unitsPerRow"
                 rules={[{ required: true, message: '请输入每行个数' }]}
               >
                 <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="出血高度 (cm)"
+                name="bleedHeight"
+                rules={[{ required: true, message: '请输入出血高度' }]}
+              >
+                <InputNumber min={0} step={0.1} precision={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
@@ -931,16 +1196,80 @@ export default function Patterns() {
           {/* 颜色变体管理区域 */}
           {editingPattern && (
             <div style={{ marginTop: 16, padding: 12, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
-              <div style={{ marginBottom: 8, fontWeight: 'bold', color: '#262626' }}>
-                🎨 颜色变体管理
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontWeight: 'bold', color: '#262626' }}>
+                  🎨 颜色变体管理
+                </div>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<FormatPainterOutlined />}
+                  onClick={() => handleOpenColorModal(editingPattern)}
+                >
+                  高级管理
+                </Button>
               </div>
+
+              {/* 快速添加颜色预设 */}
+              {colorPresets.length > 0 && (
+                <div style={{ marginBottom: 12, padding: 10, backgroundColor: '#e6f7ff', borderRadius: 6, border: '1px solid #91d5ff' }}>
+                  <div style={{
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    marginBottom: 8,
+                    color: '#1890ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}>
+                    ⚡ 快速添加：
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {colorPresets.slice(0, 10).map((preset) => (
+                      <Button
+                        key={preset.id}
+                        size="small"
+                        onClick={() => handleQuickAddPresetVariant(preset)}
+                        style={{
+                          height: '28px',
+                          fontSize: '12px',
+                          padding: '0 10px',
+                          backgroundColor: '#ffffff',
+                          borderColor: '#d9d9d9',
+                          borderRadius: '4px',
+                          transition: 'all 0.2s ease',
+                          fontWeight: 500
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = preset.color + '20';
+                          e.currentTarget.style.borderColor = preset.color;
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = `0 2px 4px ${preset.color}40`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                          e.currentTarget.style.borderColor = '#d9d9d9';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        {preset.displayName || preset.name}
+                      </Button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#8c8c8c' }}>
+                    💡 提示：点击按钮快速添加预设颜色，或点击"高级管理"进行更多操作
+                  </div>
+                </div>
+              )}
+
               {newColorVariants.length === 0 ? (
                 <div style={{ padding: 16, textAlign: 'center', color: '#8c8c8c' }}>
-                  暂无颜色变体，请通过颜色变体管理模块添加
+                  暂无颜色变体，点击上方按钮快速添加
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {newColorVariants.map((variant: any, index: number) => (
+                  {newColorVariants.map((variant, index) => (
                     <div
                       key={index}
                       style={{
@@ -977,7 +1306,7 @@ export default function Patterns() {
                             size="small"
                             type="link"
                             onClick={() => {
-                              const updated = newColorVariants.map((v: any, i: number) => ({
+                              const updated = newColorVariants.map((v, i) => ({
                                 ...v,
                                 isDefault: i === index,
                               }));
@@ -991,7 +1320,7 @@ export default function Patterns() {
                           title="确认删除"
                           description="确定要删除这个颜色变体吗？"
                           onConfirm={() => {
-                            const updated = newColorVariants.filter((_: any, i: number) => i !== index);
+                            const updated = newColorVariants.filter((_, i) => i !== index);
                             setNewColorVariants(updated);
                           }}
                         >
@@ -1022,7 +1351,9 @@ export default function Patterns() {
       >
         <div style={{ textAlign: 'center' }}>
           {previewLoading ? (
-            <Spin size="large" tip="加载图片中..." />
+            <Spin size="large" tip="加载图片中...">
+              <div style={{ minHeight: 200 }} />
+            </Spin>
           ) : previewImage ? (
             <Image
               src={previewImage}
@@ -1040,10 +1371,10 @@ export default function Patterns() {
                   {currentPattern.isActive ? '启用' : '禁用'}
                 </Descriptions.Item>
                 <Descriptions.Item label="实际高度">
-                  {currentPattern.actualHeight} mm
+                  {currentPattern.actualHeight} cm
                 </Descriptions.Item>
                 <Descriptions.Item label="出血高度">
-                  {currentPattern.bleedHeight} mm
+                  {currentPattern.bleedHeight} cm
                 </Descriptions.Item>
                 <Descriptions.Item label="每行个数">
                   {currentPattern.unitsPerRow}
@@ -1059,12 +1390,7 @@ export default function Patterns() {
       <Modal
         title={`颜色变体 - ${currentPattern?.name}`}
         open={colorModalVisible}
-        onCancel={() => {
-          setColorModalVisible(false);
-          setColors([]);
-          setCurrentPattern(null);
-          colorForm.resetFields();
-        }}
+        onCancel={handleCloseColorModal}
         footer={null}
         width={700}
       >
@@ -1333,3 +1659,4 @@ function flattenFolderTree(
 
   return result;
 }
+

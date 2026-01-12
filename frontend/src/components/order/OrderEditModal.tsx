@@ -1,6 +1,7 @@
 /**
  * 订单完整编辑弹窗组件
- * 支持编辑客户、订单项（添加/删除/修改图案和颜色变体）、状态、备注
+ * 支持编辑客户、订单项（添加/删除/修改图案和颜色变体）、备注
+ * 订单状态通过"确认并生产"按钮控制
  */
 
 import { useState, useEffect } from 'react';
@@ -23,8 +24,8 @@ import {
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { CustomerApi, OrderApi, PatternApi } from '@/services/tauriApi';
-import type { Customer, Pattern, PricingMode, CreateOrderItemRequest } from '@/types';
-import EnhancedPatternSelector from '@/components/pattern/EnhancedPatternSelector';
+import type { Customer, Pattern, PricingMode, CreateOrderItemRequest, PatternColor } from '@/types';
+import EnhancedPatternSelector, { type SelectedPatternInfo } from '@/components/pattern/EnhancedPatternSelector';
 
 interface OrderEditModalProps {
   visible: boolean;
@@ -39,6 +40,12 @@ interface OrderEditModalProps {
     key: string;
     patternName: string;
     colorVariantName?: string;
+    colorVariants?: Array<{
+      colorVariantId: string;
+      colorVariant: PatternColor;
+      quantity: number;
+      area: number;
+    }>;
   }
 
 export default function OrderEditModal({
@@ -91,7 +98,6 @@ export default function OrderEditModal({
           if (order) {
             form.setFieldsValue({
               customerId: order.customerId,
-              status: order.status,
               notes: order.notes,
             });
 
@@ -132,13 +138,15 @@ export default function OrderEditModal({
   const currentCustomer = customers.find((c) => c.id === currentCustomerId);
   const customerUnitPrice = currentCustomer?.unitPrice || 18;
 
-  // 计算总金额
+  // 计算总金额（使用与后端一致的公式）
   const totalAmount = orderItems.reduce((sum, item) => {
     const pattern = patterns.find((p) => p.id === item.patternId);
     if (!pattern) return sum;
 
-    // 计算单价
-    const denominator = (pattern.actualHeight + pattern.bleedHeight) / 1000 / pattern.unitsPerRow;
+    // 前端数据：actualHeight 和 bleedHeight 是厘米
+    // 需要转换为毫米进行计算
+    const totalHeightMM = (pattern.actualHeight + pattern.bleedHeight) * 10;
+    const denominator = (1600 / totalHeightMM) * pattern.unitsPerRow;
     const unitPrice = customerUnitPrice / denominator;
 
     if (item.pricingMode === 'QUANTITY') {
@@ -190,7 +198,7 @@ export default function OrderEditModal({
   };
 
   // 更新订单项
-  const handleUpdateOrderItem = (key: string, field: string, value: any) => {
+  const handleUpdateOrderItem = (key: string, field: string, value: string | number | PricingMode | undefined) => {
     setOrderItems(
       orderItems.map((item) =>
         item.key === key ? { ...item, [field]: value } : item
@@ -200,8 +208,10 @@ export default function OrderEditModal({
 
   // 提交表单
   const handleSubmit = async () => {
+    console.log('[订单提交] handleSubmit 开始执行');
     try {
       const values = await form.validateFields();
+      console.log('[订单提交] 表单验证通过:', values);
 
       if (orderItems.length === 0) {
         message.error('请至少添加一个订单项');
@@ -212,33 +222,57 @@ export default function OrderEditModal({
 
       const createOrderRequest = {
         customerId: values.customerId,
-        items: orderItems.map((item) => ({
-          patternId: item.patternId,
-          quantity: item.quantity,
-          area: item.area,
-          pricingMode: item.pricingMode,
-        })),
+        items: orderItems.map((item) => {
+          // 从 colorVariants 数组中提取 colorVariantId
+          const colorVariantId = item.colorVariants && item.colorVariants.length > 0
+            ? item.colorVariants[0].colorVariantId
+            : undefined;
+
+          console.log('[订单创建] 订单项:', {
+            patternId: item.patternId,
+            patternName: item.patternName,
+            colorVariantId,
+            quantity: item.quantity,
+          });
+
+          return {
+            patternId: item.patternId,
+            quantity: item.quantity,
+            area: item.area,
+            pricingMode: item.pricingMode,
+            colorVariantId, // 新增：传递颜色变体ID
+          };
+        }),
         notes: values.notes,
       };
 
+      console.log('[订单创建] 完整请求:', createOrderRequest);
+
       if (mode === 'create') {
-        await OrderApi.create(createOrderRequest);
+        console.log('[订单创建] 开始调用 OrderApi.create');
+        const result = await OrderApi.create(createOrderRequest);
+        console.log('[订单创建] OrderApi.create 成功，返回:', result);
         message.success('订单创建成功');
       } else {
-        await OrderApi.updateFull({
+        console.log('[订单更新] 开始调用 OrderApi.updateFull');
+        const result = await OrderApi.updateFull({
           id: orderId!,
           ...createOrderRequest,
-          status: values.status,
         });
+        console.log('[订单更新] OrderApi.updateFull 成功，返回:', result);
         message.success('订单更新成功');
       }
 
+      console.log('[订单提交] 准备调用 onSuccess 回调');
       onSuccess();
+      console.log('[订单提交] onSuccess 回调完成');
       handleCancel();
     } catch (error) {
+      console.error('[订单提交] 错误:', error);
       message.error('操作失败: ' + error);
     } finally {
       setSubmitting(false);
+      console.log('[订单提交] handleSubmit 结束');
     }
   };
 
@@ -311,7 +345,9 @@ export default function OrderEditModal({
         const pattern = patterns.find((p) => p.id === record.patternId);
         if (!pattern) return '-';
 
-        const denominator = (pattern.actualHeight + pattern.bleedHeight) / 1000 / pattern.unitsPerRow;
+        // 使用与后端一致的价格计算公式
+        const totalHeightMM = (pattern.actualHeight + pattern.bleedHeight) * 10;
+        const denominator = (1600 / totalHeightMM) * pattern.unitsPerRow;
         const unitPrice = customerUnitPrice / denominator;
 
         const subtotal =
@@ -346,6 +382,7 @@ export default function OrderEditModal({
         onOk={handleSubmit}
         onCancel={handleCancel}
         confirmLoading={submitting}
+        loading={loading}
         width={900}
         okText={mode === 'create' ? '创建' : '保存'}
       >
@@ -369,22 +406,6 @@ export default function OrderEditModal({
                       {customer.name} (单价: ¥{customer.unitPrice}/m²)
                     </Select.Option>
                   ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="订单状态"
-                name="status"
-                rules={[{ required: true, message: '请选择状态' }]}
-                initialValue="PENDING"
-              >
-                <Select>
-                  <Select.Option value="PENDING">待确认</Select.Option>
-                  <Select.Option value="CONFIRMED">已确认</Select.Option>
-                  <Select.Option value="IN_PROGRESS">进行中</Select.Option>
-                  <Select.Option value="COMPLETED">已完成</Select.Option>
-                  <Select.Option value="CANCELLED">已取消</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -448,16 +469,49 @@ export default function OrderEditModal({
         </Form>
       </Modal>
 
-      {/* 图案选择器 */}
+      {/* 图案选择器 - 批量选择模式 */}
       <EnhancedPatternSelector
         visible={patternSelectorVisible}
         onCancel={() => setPatternSelectorVisible(false)}
         onConfirm={handlePatternConfirm}
+        onConfirmMultiple={(selectedPatterns) => {
+          // 处理批量选择：将所有选中的颜色变体转换为订单项
+          const newItems: OrderItemRow[] = [];
+
+          selectedPatterns.forEach((patternInfo) => {
+            // selectedVariants 是 Map<string, ColorVariantItem>
+            patternInfo.selectedVariants.forEach((variant) => {
+              // 只添加有数量或面积的变体
+              if ((variant.pricingMode === 'QUANTITY' && variant.quantity > 0) ||
+                  (variant.pricingMode === 'AREA' && variant.area > 0)) {
+                newItems.push({
+                  key: `${Date.now()}-${Math.random()}`,
+                  patternId: patternInfo.pattern.id,
+                  patternName: patternInfo.pattern.name,
+                  quantity: variant.quantity,
+                  area: variant.area,
+                  pricingMode: variant.pricingMode,
+                  colorVariantName: variant.colorVariant.name,
+                  colorVariants: [{
+                    colorVariantId: variant.colorVariantId,
+                    colorVariant: variant.colorVariant,
+                    quantity: variant.quantity,
+                    area: variant.area,
+                  }],
+                });
+              }
+            });
+          });
+
+          setOrderItems([...orderItems, ...newItems]);
+          setPatternSelectorVisible(false);
+        }}
         patterns={patterns}
         mode={orderItems.length > 0 ? orderItems[0].pricingMode : 'QUANTITY'}
         customerUnitPrice={customerUnitPrice}
         customerId={currentCustomerId}
         customerName={currentCustomer?.name}
+        allowMultiple={true}
       />
     </>
   );

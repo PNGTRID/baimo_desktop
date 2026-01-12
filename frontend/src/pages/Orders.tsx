@@ -3,20 +3,15 @@ import {
   Button,
   Table,
   Modal,
-  Form,
   Select,
-  InputNumber,
   App,
   Card,
   Typography,
-  Tag,
   Space,
   Popconfirm,
-  Input,
   Row,
   Col,
   Statistic,
-  DatePicker,
   Image,
   Upload,
   Divider,
@@ -24,23 +19,20 @@ import {
 import {
   PlusOutlined,
   ReloadOutlined,
-  MinusCircleOutlined,
   EditOutlined,
   DeleteOutlined,
   CameraOutlined,
   PictureOutlined,
   SearchOutlined,
-  CalendarOutlined,
 } from '@ant-design/icons';
-import type { Order, Customer, CreateOrderItemRequest, PricingMode, Pattern, OrderStatus } from '@/types';
-import { OrderApi, CustomerApi, PatternApi } from '@/services/tauriApi';
+import type { Order, CreateOrderItemRequest, OrderPatternItem } from '@/types';
+import { OrderApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
-import type { UploadFile } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
 import OrderEditModal from '@/components/order/OrderEditModal';
-import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
+import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
 
 const { Text } = Typography;
-const { RangePicker } = DatePicker;
 
 interface DailySummary {
   totalOrders: number;
@@ -52,7 +44,7 @@ interface DailySummary {
 const orderColumns = (
   onEdit: (order: Order) => void,
   onDelete: (id: string) => void,
-  onStatusChange: (id: string, status: OrderStatus) => void,
+  onConfirm: (id: string) => void,
   onViewScreenshot: (order: Order) => void,
 ) => [
   { title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150 },
@@ -66,29 +58,21 @@ const orderColumns = (
   },
   {
     title: '状态',
-    dataIndex: 'status',
-    key: 'status',
+    dataIndex: 'isConfirmed',
+    key: 'isConfirmed',
     width: 150,
-    render: (status: string, record: Order) => {
-      const statusMap: Record<string, { text: string; color: string }> = {
-        PENDING: { text: '待确认', color: 'default' },
-        CONFIRMED: { text: '已确认', color: 'blue' },
-        IN_PROGRESS: { text: '进行中', color: 'processing' },
-        COMPLETED: { text: '已完成', color: 'success' },
-        CANCELLED: { text: '已取消', color: 'error' },
-      };
-      const statusInfo = statusMap[status] || { text: status, color: 'default' };
-      return (
-        <Select
-          value={status}
-          style={{ width: 120 }}
-          onChange={(value) => onStatusChange(record.id, value)}
-          options={Object.entries(statusMap).map(([key, { text }]) => ({
-            label: text,
-            value: key,
-          }))}
-        />
-      );
+    render: (isConfirmed: boolean, record: Order) => {
+      if (isConfirmed) {
+        return (
+          <Space>
+            <Text type="success">已完成</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.confirmedAt ? dayjs(record.confirmedAt).format('MM-DD HH:mm') : ''}
+            </Text>
+          </Space>
+        );
+      }
+      return <Text type="warning">进行中</Text>;
     },
   },
   {
@@ -101,9 +85,22 @@ const orderColumns = (
   {
     title: '操作',
     key: 'action',
-    width: 200,
+    width: 250,
     render: (_: unknown, record: Order) => (
       <Space size="small">
+        {!record.isConfirmed && (
+          <Popconfirm
+            title="确认并生产"
+            description="确认后订单将标记为完成，会计入账单统计。确定吗？"
+            onConfirm={() => onConfirm(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="primary" size="small">
+              确认并生产
+            </Button>
+          </Popconfirm>
+        )}
         <Button
           type="text"
           icon={<CameraOutlined />}
@@ -131,7 +128,27 @@ const orderColumns = (
 ];
 
 const itemColumns = [
-  { title: '图案名称', dataIndex: 'patternName', key: 'patternName' },
+  {
+    title: '图案名称',
+    dataIndex: 'patternName',
+    key: 'patternName',
+    render: (name: string, record: OrderPatternItem) => (
+      <PatternPreviewPopover
+        patternId={record.patternId}
+        patternName={name}
+      >
+        <span
+          style={{
+            cursor: 'pointer',
+            color: '#1890ff',
+            textDecoration: 'underline',
+          }}
+        >
+          {name}
+        </span>
+      </PatternPreviewPopover>
+    ),
+  },
   {
     title: '数量',
     dataIndex: 'quantity',
@@ -160,14 +177,10 @@ const itemColumns = [
 export default function Orders() {
   const { message } = App.useApp();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [orderItems, setOrderItems] = useState<CreateOrderItemRequest[]>([]);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [form] = Form.useForm();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 批量选中的订单 ID
 
   // 统计数据状态
   const [dailySummary, setDailySummary] = useState<DailySummary>({
@@ -181,10 +194,6 @@ export default function Orders() {
   const [screenshotModalVisible, setScreenshotModalVisible] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [screenshotFiles, setScreenshotFiles] = useState<UploadFile[]>([]);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().startOf('day'),
-    dayjs().endOf('day'),
-  ]);
 
   // 计算当天订单汇总
   const calculateDailySummary = (orderList: Order[]): DailySummary => {
@@ -193,9 +202,11 @@ export default function Orders() {
       return orderDate.isSame(dayjs(), 'day');
     });
 
-    const totalAmount = todayOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-    const completedOrders = todayOrders.filter((o) => o.status === 'COMPLETED').length;
-    const pendingOrders = todayOrders.filter((o) => o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
+    // 只统计已确认的订单（确认并生产后会计入账单）
+    const confirmedOrders = todayOrders.filter((o) => o.isConfirmed);
+    const totalAmount = confirmedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const completedOrders = confirmedOrders.length;
+    const pendingOrders = todayOrders.filter((o) => !o.isConfirmed).length;
 
     return {
       totalOrders: todayOrders.length,
@@ -207,149 +218,30 @@ export default function Orders() {
 
   // 加载订单列表
   const loadOrders = async () => {
+    console.log('[订单刷新] loadOrders 开始');
     setLoading(true);
     try {
       const data = await OrderApi.getAll();
+      console.log('[订单刷新] 获取到订单数据:', data.length, '条');
       setOrders(data);
-      setFilteredOrders(data);
 
       // 计算当天汇总
       const summary = calculateDailySummary(data);
       setDailySummary(summary);
+      console.log('[订单刷新] 订单列表更新完成');
     } catch (error) {
+      console.error('[订单刷新] 加载失败:', error);
       message.error('加载订单列表失败');
-      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // 加载客户列表
-  const loadCustomers = async () => {
-    try {
-      const data = await CustomerApi.getAll();
-      setCustomers(data);
-    } catch (error) {
-      console.error('加载客户列表失败:', error);
-    }
-  };
-
-  // 加载图案列表
-  const loadPatterns = async () => {
-    try {
-      const data = await PatternApi.getAll();
-      setPatterns(data);
-    } catch (error) {
-      console.error('加载图案列表失败:', error);
-    }
-  };
-
-  // 日期范围筛选
-  useEffect(() => {
-    if (dateRange) {
-      const [start, end] = dateRange;
-      const filtered = orders.filter((order) => {
-        const orderDate = dayjs(order.createdAt);
-        return orderDate.isAfter(start.subtract(1, 'second')) &&
-               orderDate.isBefore(end.add(1, 'second'));
-      });
-      setFilteredOrders(filtered);
-    }
-  }, [dateRange, orders]);
-
   // 组件挂载时加载数据
   useEffect(() => {
     loadOrders();
-    loadCustomers();
-    loadPatterns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 打开新建订单模态框
-  const handleOpenModal = () => {
-    setEditingOrder(null);
-    setOrderItems([]);
-    form.resetFields();
-    setIsModalOpen(true);
-  };
-
-  // 添加订单项
-  const handleAddItem = () => {
-    setOrderItems([
-      ...orderItems,
-      {
-        patternId: '',
-        quantity: 1,
-        pricingMode: 'QUANTITY' as PricingMode,
-      },
-    ]);
-  };
-
-  // 删除订单项
-  const handleRemoveItem = (index: number) => {
-    setOrderItems(orderItems.filter((_, i) => i !== index));
-  };
-
-  // 更新订单项
-  const handleUpdateItem = (
-    index: number,
-    field: keyof CreateOrderItemRequest,
-    value: CreateOrderItemRequest[keyof CreateOrderItemRequest]
-  ) => {
-    const newItems = [...orderItems];
-    (newItems[index] as CreateOrderItemRequest)[field] = value;
-    setOrderItems(newItems);
-  };
-
-  // 创建或更新订单
-  const handleSubmitOrder = async () => {
-    try {
-      const values = await form.validateFields();
-
-      if (editingOrder) {
-        // 编辑模式：只更新状态和备注
-        const updatedOrder = await OrderApi.update({
-          id: editingOrder.id,
-          status: values.status,
-          notes: values.notes,
-        });
-
-        setOrders(orders.map((o) => (o.id === updatedOrder?.id ? updatedOrder : o)));
-        message.success('订单更新成功');
-      } else {
-        // 创建模式：原有逻辑
-        if (orderItems.length === 0) {
-          message.warning('请至少添加一个订单项');
-          return;
-        }
-
-        // 验证订单项
-        for (const item of orderItems) {
-          if (!item.patternId) {
-            message.warning('请选择所有订单项的图案');
-            return;
-          }
-        }
-
-        const newOrder = await OrderApi.create({
-          customerId: values.customerId,
-          items: orderItems,
-          notes: values.notes,
-        });
-
-        setOrders([...orders, newOrder]);
-        message.success('订单创建成功');
-      }
-
-      setIsModalOpen(false);
-      form.resetFields();
-      setOrderItems([]);
-      setEditingOrder(null);
-      await loadOrders();
-    } catch (error) {
-      message.error(editingOrder ? '订单更新失败' : '订单创建失败');
-      console.error(error);
-    }
-  };
 
   // 编辑订单
   const handleEdit = (order: Order) => {
@@ -364,18 +256,11 @@ export default function Orders() {
 
   // 新建或编辑成功回调
   const handleModalSuccess = async () => {
+    console.log('[订单刷新] handleModalSuccess 被调用');
     setEditingOrder(null);
+    console.log('[订单刷新] 开始调用 loadOrders()');
     await loadOrders();
-  };
-
-  // 当天订单弹窗状态
-  const [dailyOrdersVisible, setDailyOrdersVisible] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>();
-
-  // 显示客户当天订单
-  const handleShowDailyOrders = (customerId: string) => {
-    setSelectedCustomerId(customerId);
-    setDailyOrdersVisible(true);
+    console.log('[订单刷新] loadOrders() 完成');
   };
 
   // 删除订单
@@ -395,16 +280,36 @@ export default function Orders() {
     }
   };
 
-  // 快速更新状态
-  const handleStatusChange = async (id: string, status: OrderStatus) => {
+  // 确认并生产订单
+  const handleConfirm = async (id: string) => {
     try {
-      const updatedOrder = await OrderApi.update({ id, status });
-      if (updatedOrder) {
-        setOrders(orders.map((o) => (o.id === id ? updatedOrder : o)));
-        message.success('状态更新成功');
-      }
+      const updatedOrder = await OrderApi.confirm(id);
+      setOrders(orders.map((o) => (o.id === id ? updatedOrder : o)));
+      message.success('订单已确认并生产');
+
+      // 重新计算当天汇总
+      const summary = calculateDailySummary(orders.map((o) => (o.id === id ? updatedOrder : o)));
+      setDailySummary(summary);
     } catch (error) {
-      message.error('状态更新失败');
+      message.error('确认失败');
+      console.error(error);
+    }
+  };
+
+  // 批量删除订单
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的订单');
+      return;
+    }
+
+    try {
+      const count = await OrderApi.batchDelete(selectedRowKeys as string[]);
+      message.success(`成功删除 ${count} 个订单`);
+      setSelectedRowKeys([]);
+      await loadOrders();
+    } catch (error) {
+      message.error('批量删除失败');
       console.error(error);
     }
   };
@@ -419,84 +324,29 @@ export default function Orders() {
   };
 
   // 截图上传处理
-  const handleScreenshotChange = (info: any) => {
+  const handleScreenshotChange: UploadProps['onChange'] = (info) => {
     setScreenshotFiles(info.fileList);
   };
 
-  // 订单项表格列
-  const itemFormColumns = [
-    {
-      title: '图案',
-      key: 'patternId',
-      width: 200,
-      render: (_: unknown, record: CreateOrderItemRequest, index: number) => (
-        <Select
-          placeholder="请选择图案"
-          style={{ width: '100%' }}
-          value={record.patternId || undefined}
-          onChange={(value) => handleUpdateItem(index, 'patternId', value)}
-          options={patterns.map((p) => ({ label: p.name, value: p.id }))}
-          showSearch
-          filterOption={(input, option) =>
-            (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
-          }
-        />
-      ),
-    },
-    {
-      title: '计价方式',
-      key: 'pricingMode',
-      width: 120,
-      render: (_: unknown, record: CreateOrderItemRequest, index: number) => (
-        <Select
-          style={{ width: '100%' }}
-          value={record.pricingMode}
-          onChange={(value) => handleUpdateItem(index, 'pricingMode', value)}
-          options={[
-            { label: '按数量', value: 'QUANTITY' },
-            { label: '按面积', value: 'AREA' },
-          ]}
-        />
-      ),
-    },
-    {
-      title: '数量/面积',
-      key: 'quantity',
-      width: 120,
-      render: (_: unknown, record: CreateOrderItemRequest, index: number) => (
-        <InputNumber
-          placeholder="请输入"
-          style={{ width: '100%' }}
-          value={record.quantity}
-          onChange={(value) => handleUpdateItem(index, 'quantity', value || 1)}
-          min={1}
-        />
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 60,
-      render: (_: unknown, _record: CreateOrderItemRequest, index: number) => (
-        <Button
-          type="text"
-          size="small"
-          danger
-          icon={<MinusCircleOutlined />}
-          onClick={() => handleRemoveItem(index)}
-        />
-      ),
-    },
-  ];
-
   return (
     <div>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>
+          订单管理
+        </h2>
+        <p style={{ color: '#666', margin: 0, fontSize: 13 }}>
+          管理客户订单、跟踪订单状态和生产进度
+        </p>
+      </div>
+
       {/* 当天订单汇总卡片 */}
       <Card
+        className="stat-card"
         title={
           <Space>
-            <SearchOutlined />
-            当天订单汇总
+            <SearchOutlined style={{ color: '#1a5f4c' }} />
+            <span style={{ fontSize: 15, fontWeight: 600 }}>当天订单汇总</span>
             <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
               ({dayjs().format('YYYY-MM-DD')})
             </Text>
@@ -509,7 +359,7 @@ export default function Orders() {
             <Statistic
               title="总订单数"
               value={dailySummary.totalOrders}
-              styles={{ content: { color: '#1890ff' } }}
+              styles={{ content: { color: '#1a5f4c', fontWeight: 600 } }}
             />
           </Col>
           <Col span={6}>
@@ -518,21 +368,21 @@ export default function Orders() {
               value={dailySummary.totalAmount}
               precision={2}
               prefix="¥"
-              styles={{ content: { color: '#3f8600' } }}
+              styles={{ content: { color: '#52c41a', fontWeight: 600 } }}
             />
           </Col>
           <Col span={6}>
             <Statistic
               title="已完成"
               value={dailySummary.completedOrders}
-              styles={{ content: { color: '#52c41a' } }}
+              styles={{ content: { color: '#52c41a', fontWeight: 600 } }}
             />
           </Col>
           <Col span={6}>
             <Statistic
               title="进行中"
               value={dailySummary.pendingOrders}
-              styles={{ content: { color: '#faad14' } }}
+              styles={{ content: { color: '#faad14', fontWeight: 600 } }}
             />
           </Col>
         </Row>
@@ -540,31 +390,39 @@ export default function Orders() {
 
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} style={{ fontWeight: 500 }}>
             新建订单
           </Button>
           <Button icon={<ReloadOutlined />} onClick={loadOrders} loading={loading}>
             刷新
           </Button>
+          {selectedRowKeys.length > 0 && (
+            <Popconfirm
+              title="确认批量删除"
+              description={`确定要删除选中的 ${selectedRowKeys.length} 个订单吗？此操作不可恢复。`}
+              onConfirm={handleBatchDelete}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
 
-        <Space>
-          <Text type="secondary">日期范围：</Text>
-          <RangePicker
-            value={dateRange}
-            onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs])}
-            format="YYYY-MM-DD"
-            allowClear={false}
-          />
-          <Text type="secondary">共 {filteredOrders.length} 条订单</Text>
-        </Space>
+        <Text type="secondary">共 {orders.length} 条订单</Text>
       </div>
 
       <Table
-        dataSource={filteredOrders}
-        columns={orderColumns(handleEdit, handleDelete, handleStatusChange, handleViewScreenshot)}
+        dataSource={orders}
+        columns={orderColumns(handleEdit, handleDelete, handleConfirm, handleViewScreenshot)}
         rowKey="id"
         loading={loading}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys),
+        }}
         expandable={{
           expandedRowRender: (record: Order) => (
             <div style={{ padding: '16px 0' }}>
@@ -604,15 +462,6 @@ export default function Orders() {
           setEditingOrder(null);
         }}
       />
-
-      {/* 客户当天订单弹窗 */}
-      {selectedCustomerId && (
-        <CustomerDailyOrdersModal
-          visible={dailyOrdersVisible}
-          customerId={selectedCustomerId}
-          onCancel={() => setDailyOrdersVisible(false)}
-        />
-      )}
 
       {/* 截图查看模态框 */}
       <Modal

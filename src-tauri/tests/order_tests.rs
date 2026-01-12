@@ -1,4 +1,6 @@
 // 订单管理集成测试
+#![allow(clippy::needless_borrows_for_generic_args)]
+
 mod common;
 use common::TestDatabase;
 
@@ -78,7 +80,7 @@ fn test_order_create() {
 #[test]
 fn test_order_price_calculation_quantity() {
     let db = TestDatabase::new();
-    let conn = db.connection();
+    let _conn = db.connection();
 
     // 测试按数量计价
     let quantity = 100;
@@ -96,7 +98,7 @@ fn test_order_price_calculation_quantity() {
 #[test]
 fn test_order_price_calculation_area() {
     let db = TestDatabase::new();
-    let conn = db.connection();
+    let _conn = db.connection();
 
     // 测试按面积计价
     let area = 50.0;  // 平方米

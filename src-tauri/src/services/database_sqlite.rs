@@ -100,7 +100,7 @@ mod tests {
     fn test_database_connection() {
         let db = SqliteDatabase::new("/tmp/test.db".into()).unwrap();
         let version: String = db
-            .query_row("SELECT sqlite_version()", [], |row| row.get(0))
+            .query_row("SELECT sqlite_version()", &[], |row| row.get(0))
             .unwrap()
             .unwrap();
         println!("SQLite version: {}", version);

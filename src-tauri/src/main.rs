@@ -15,6 +15,7 @@ use commands::{
     pattern_color,
     financial,
     settings,
+    seed_data,
     tiff,
 };
 use services::Database;
@@ -58,7 +59,9 @@ pub fn run() {
             order::create_order,
             order::update_order,
             order::update_order_full,
+            order::confirm_order,
             order::delete_order,
+            order::batch_delete_orders,
 
             // ============================================================
             // 图案相关命令
@@ -138,6 +141,11 @@ pub fn run() {
             settings::create_color_preset,
             settings::update_color_preset,
             settings::delete_color_preset,
+
+            // ============================================================
+            // 种子数据初始化命令
+            // ============================================================
+            seed_data::seed_color_presets,
 
             // ============================================================
             // 系统设置命令 - 系统日志

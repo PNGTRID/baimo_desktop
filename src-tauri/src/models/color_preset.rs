@@ -19,15 +19,6 @@ pub struct ColorPreset {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateColorPresetRequest {
-    pub name: String,
-    pub display_name: Option<String>,
-    pub color: String,
-    pub sort_order: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UpdateColorPresetRequest {
     pub name: Option<String>,
     pub display_name: Option<String>,

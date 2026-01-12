@@ -46,6 +46,8 @@ export interface Pattern {
   previewImage?: string;
   localFilePath?: string; // 本地 TIFF 文件路径
   customerId?: string;
+  folderId?: string; // 所属文件夹
+  colorType?: string; // 颜色类型：SINGLE（单色）或 MULTI（多色）
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -76,14 +78,13 @@ export interface Order {
   customerId: string;
   customerName: string;
   totalAmount: number;
-  status: OrderStatus;
+  isConfirmed: boolean; // 是否已确认并生产
+  confirmedAt?: string; // 确认并生产时间（ISO 8601）
   notes?: string;
   createdAt: string;
   updatedAt: string;
   items: OrderPatternItem[];
 }
-
-export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
 export interface OrderPatternItem {
   id: string;
@@ -94,6 +95,8 @@ export interface OrderPatternItem {
   pricingMode: PricingMode;
   unitPrice: number;
   totalPrice: number;
+  colorVariantId?: string; // 颜色变体 ID
+  colorVariantName?: string; // 颜色变体名称（用于显示）
 }
 
 export type PricingMode = 'QUANTITY' | 'AREA'; // 按数量 / 按面积
@@ -109,11 +112,11 @@ export interface CreateOrderItemRequest {
   quantity: number;
   area?: number;
   pricingMode: PricingMode;
+  colorVariantId?: string; // 颜色变体 ID
 }
 
 export interface UpdateOrderRequest {
   id: string;
-  status?: OrderStatus;
   notes?: string;
 }
 
@@ -121,7 +124,6 @@ export interface UpdateOrderFullRequest {
   id: string;
   customerId: string;
   items: CreateOrderItemRequest[];
-  status: OrderStatus;
   notes?: string;
 }
 
@@ -260,6 +262,7 @@ export interface FolderTreeNode {
   parentId?: string;
   level: number;
   path: string;
+  customerId?: string;
   patternCount: number;
   children: FolderTreeNode[];
 }

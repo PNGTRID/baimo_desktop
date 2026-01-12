@@ -63,19 +63,20 @@ model Product {
 // 订单表
 // ============================================================
 model Order {
-  id          String    @id @default(uuid())
-  customerId  String
-  orderDate   DateTime  @default(now())
-  totalAmount Float
-  status      String    @default("pending") // pending, paid, shipped, completed, cancelled
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  customerId     String
+  orderDate      DateTime  @default(now())
+  totalAmount    Float
+  isConfirmed    Boolean   @default(false) @map("is_confirmed") // 是否已确认并生产
+  confirmedAt    DateTime? @map("confirmed_at") // 确认并生产时间
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // 关联：一个订单属于一个客户
-  customer    Customer  @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Cascade)
+  customer       Customer  @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Cascade)
   // 关联：一个订单可以有多个订单项
-  items       OrderItem[]
+  items          OrderItem[]
   // 关联：一个订单可以有多个订单图案项（印花行业）
   patternItems     OrderPatternItem[]  @relation("OrderPatternItems")
   // 关联：一个订单可以有多个财务记录
@@ -157,8 +158,8 @@ model Pattern {
   id            String         @id @default(uuid())
   name          String
   code          String         @unique
-  actualHeight  Float          // 实际高度（毫米）
-  bleedHeight   Float          // 出血高度（毫米）
+  actualHeight  Float          // 实际高度（厘米）
+  bleedHeight   Float          // 出血高度（厘米）
   unitsPerRow   Int            // 每行个数
   rowCount      Int            // 行数
   localFilePath String?        // 本地 TIFF 文件路径

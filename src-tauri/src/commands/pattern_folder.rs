@@ -42,7 +42,7 @@ pub async fn get_folder_tree(db: State<'_, Database>) -> Result<Vec<FolderTreeNo
 
     for folder in &folders {
         let count: i32 = db.sqlite().query_row(
-            "SELECT COUNT(*) FROM patterns WHERE folderId = ?1 AND isActive = 1",
+            "SELECT COUNT(*) FROM patterns WHERE folder_id = ?1 AND isActive = 1",
             &[&folder.id as &dyn rusqlite::ToSql],
             |row| row.get(0),
         ).map_err(|e| format!("Failed to count patterns: {:?}", e))?
@@ -69,6 +69,7 @@ pub async fn get_folder_tree(db: State<'_, Database>) -> Result<Vec<FolderTreeNo
                     parent_id: folder.parent_id.clone(),
                     level: folder.level,
                     path: folder.path.clone(),
+                    customer_id: folder.customer_id.clone(),
                     pattern_count: count,
                     children,
                 }
@@ -196,7 +197,7 @@ pub async fn update_folder(
         let conn = conn.lock().unwrap();
 
         let mut sql_params: Vec<&str> = params.iter().map(|s| s.as_str()).collect();
-        sql_params.push(&id.as_str());
+        sql_params.push(id.as_str());
 
         conn.prepare(&sql)
             .map_err(|e| format!("Failed to prepare statement: {:?}", e))?
@@ -227,7 +228,7 @@ pub async fn delete_folder(
 
     // 检查是否有图案
     let pattern_count: i32 = db.sqlite().query_row(
-        "SELECT COUNT(*) FROM patterns WHERE folderId = ?1",
+        "SELECT COUNT(*) FROM patterns WHERE folder_id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to check patterns: {:?}", e))?

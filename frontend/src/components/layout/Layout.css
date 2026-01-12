@@ -1,10 +1,147 @@
+/**
+ * 白墨记账系统 - 布局样式
+ * 新东方主义美学设计语言
+ */
+
+/* ========== Logo 区域 ========== */
 .logo {
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
 }
 
-.site-layout .site-layout-background {
-  background: #fff;
+.logo-light {
+  border-bottom: 1px solid #e8e6e1;
+}
+
+.logo-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.logo-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #1a5f4c 0%, #237a62 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(26, 95, 76, 0.3);
+  flex-shrink: 0;
+}
+
+.logo-text {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: 'STKaiti', 'KaiTi', 'Georgia', serif;
+  line-height: 1;
+}
+
+.logo-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* ========== 侧边栏折叠状态 ========== */
+.ant-layout-sider-collapsed .logo-content {
+  justify-content: center;
+  padding: 0;
+}
+
+.ant-layout-sider-collapsed .logo-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.ant-layout-sider-collapsed .logo-text {
+  font-size: 18px;
+}
+
+/* ========== 菜单样式增强 ========== */
+.ant-menu-item {
+  margin: 4px 8px !important;
+  width: calc(100% - 16px) !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  border-radius: 8px !important;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s ease;
+  color: #666666;
+}
+
+.ant-menu-item .ant-menu-title-content {
+  margin-left: 4px;
+}
+
+.ant-menu-item-selected {
+  background: linear-gradient(135deg, #1a5f4c 0%, #237a62 100%) !important;
+  box-shadow: 0 2px 8px rgba(26, 95, 76, 0.25);
+  color: #ffffff !important;
+}
+
+.ant-menu-item:hover {
+  background: rgba(26, 95, 76, 0.08) !important;
+  color: #1a5f4c !important;
+}
+
+.ant-menu-item-icon {
+  font-size: 16px;
+  min-width: 16px;
+}
+
+/* ========== 折叠触发器 ========== */
+.collapse-trigger:hover {
+  background-color: #f5f4f0 !important;
+}
+
+/* ========== 内容包装器 ========== */
+.content-wrapper {
+  min-height: 400px;
+}
+
+/* ========== 页面过渡动画 ========== */
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: pageFadeIn 0.3s ease forwards;
+}
+
+/* ========== 头部信息 ========== */
+.header-info {
+  padding: 6px 12px;
+  background: #faf9f6;
+  border-radius: 8px;
+  border: 1px solid #e8e6e1;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 768px) {
+  .logo-title {
+    display: none;
+  }
+
+  .header-info {
+    display: none;
+  }
 }

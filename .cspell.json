@@ -1,0 +1,25 @@
+{
+  "version": "0.2",
+  "language": "en,zh",
+  "words": [
+    "baimo",
+    "tauri",
+    "serde",
+    "rusqlite",
+    "chrono",
+    "tokio",
+    "zustand",
+    "antd",
+    "dayjs",
+    "vite",
+    "pnpm",
+    "prisma"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "target",
+    "*.lock",
+    "*.svg"
+  ]
+}

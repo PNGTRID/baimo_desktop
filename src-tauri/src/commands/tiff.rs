@@ -110,7 +110,7 @@ pub async fn parse_tiff_file(file_path: String) -> Result<TiffMetadata, String> 
             TAG_IMAGE_WIDTH => {
                 width = if field_type == 3 && count == 1 {
                     // SHORT 类型，直接存储
-                    value_offset as u32
+                    value_offset
                 } else if field_type == 4 {
                     // LONG 类型
                     if count == 1 {
@@ -125,7 +125,7 @@ pub async fn parse_tiff_file(file_path: String) -> Result<TiffMetadata, String> 
             }
             TAG_IMAGE_LENGTH => {
                 height = if field_type == 3 && count == 1 {
-                    value_offset as u32
+                    value_offset
                 } else if field_type == 4 {
                     if count == 1 {
                         value_offset
@@ -232,8 +232,8 @@ pub async fn parse_tiff_file(file_path: String) -> Result<TiffMetadata, String> 
     Ok(TiffMetadata {
         file_path,
         file_name,
-        width: width as u32,
-        height: height as u32,
+        width,
+        height,
         height_cm,
         dpi,
         color_type: color_type_str,
@@ -380,7 +380,7 @@ pub fn parse_tiff_file_sync(file_path: &Path) -> Result<TiffMetadata, String> {
             TAG_IMAGE_WIDTH => {
                 width = if field_type == 3 && count == 1 {
                     // SHORT 类型，直接存储
-                    value_offset as u32
+                    value_offset
                 } else if field_type == 4 {
                     // LONG 类型
                     if count == 1 {
@@ -395,7 +395,7 @@ pub fn parse_tiff_file_sync(file_path: &Path) -> Result<TiffMetadata, String> {
             }
             TAG_IMAGE_LENGTH => {
                 height = if field_type == 3 && count == 1 {
-                    value_offset as u32
+                    value_offset
                 } else if field_type == 4 {
                     if count == 1 {
                         value_offset

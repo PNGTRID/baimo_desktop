@@ -61,6 +61,7 @@ export default function CustomerDailyOrdersModal({
     if (visible && customerId) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, customerId, targetDate]);
 
   // 计算汇总统计

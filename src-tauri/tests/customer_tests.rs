@@ -1,4 +1,6 @@
 // 客户管理集成测试
+#![allow(clippy::needless_borrows_for_generic_args)]
+
 mod common;
 use common::TestDatabase;
 

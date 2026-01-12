@@ -1,11 +1,11 @@
 // 测试辅助模块
 use rusqlite::Connection;
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 
 /// 测试数据库管理器
+#[allow(dead_code)]
 pub struct TestDatabase {
-    pub path: PathBuf,
+    path: PathBuf,
     pub conn: Option<Connection>,
 }
 
@@ -121,6 +121,7 @@ impl TestDatabase {
     }
 
     /// 清理测试数据库
+    #[allow(dead_code)]
     pub fn cleanup(mut self) {
         self.conn = None;
         if self.path.exists() {
@@ -137,12 +138,14 @@ impl Drop for TestDatabase {
 }
 
 /// 测试结果收集器
+#[allow(dead_code)]
 pub struct TestResults {
     pub passed: usize,
     pub failed: usize,
     pub errors: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl TestResults {
     pub fn new() -> Self {
         TestResults {
