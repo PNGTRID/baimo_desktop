@@ -19,14 +19,8 @@ const DEFAULT_UNITS_PER_ROW: i32 = 2;
 /// 默认行数（创建图案时的默认值）
 const DEFAULT_ROW_COUNT: i32 = 10;
 
-/// 默认出血高度（厘米）
-const DEFAULT_BLEED_HEIGHT: f64 = 2.0;
-
 /// 快速预览缩略图尺寸（像素）
 const THUMBNAIL_PREVIEW_SIZE: u32 = 800;
-
-/// 完整预览图尺寸（像素）
-const FULL_PREVIEW_SIZE: u32 = 200;
 
 // ============================================================
 // 辅助函数

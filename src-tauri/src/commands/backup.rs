@@ -175,7 +175,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出颜色预设
     let color_presets: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, name, display_name, color, sort_order, is_active FROM color_presets",
+        "SELECT id, name, display_name, color, sort_order, is_active, created_at, updated_at FROM color_presets",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -184,6 +184,8 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
             "color": row.get::<_, String>(3)?,
             "sortOrder": row.get::<_, i32>(4)?,
             "isActive": row.get::<_, bool>(5)?,
+            "createdAt": row.get::<_, i64>(6)?,
+            "updatedAt": row.get::<_, i64>(7)?,
         })),
     ).map_err(|e| format!("Failed to export color presets: {}", e))?;
     export_data.insert("color_presets".to_string(), serde_json::json!(color_presets));
@@ -285,10 +287,12 @@ pub async fn import_data(
                 let name = color["name"].as_str().unwrap_or("");
                 let display_name = color["displayName"].as_str();
                 let color_hex = color["color"].as_str().unwrap_or("#000000");
+                let created_at = color["createdAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp());
+                let updated_at = color["updatedAt"].as_i64().unwrap_or(chrono::Utc::now().timestamp());
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO color_presets (id, name, display_name, color, sort_order, is_active)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT OR REPLACE INTO color_presets (id, name, display_name, color, sort_order, is_active, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     [
                         &id as &dyn rusqlite::ToSql,
                         &name as &dyn rusqlite::ToSql,
@@ -296,6 +300,8 @@ pub async fn import_data(
                         &color_hex as &dyn rusqlite::ToSql,
                         &(color["sortOrder"].as_i64().unwrap_or(0) as i32) as &dyn rusqlite::ToSql,
                         &color["isActive"].as_bool().unwrap_or(true) as &dyn rusqlite::ToSql,
+                        &created_at as &dyn rusqlite::ToSql,
+                        &updated_at as &dyn rusqlite::ToSql,
                     ],
                 )?;
             }
