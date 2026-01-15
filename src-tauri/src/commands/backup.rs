@@ -61,7 +61,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出客户
     let customers: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, name, phone, address, balance, creditLimit, createdAt, updatedAt FROM customers",
+        "SELECT id, name, phone, address, balance, credit_limit, created_at, updated_at FROM customers",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -78,7 +78,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出订单
     let orders: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, customerId, orderDate, totalAmount, is_confirmed, confirmed_at, notes, createdAt, updatedAt FROM orders",
+        "SELECT id, customer_id, order_date, total_amount, is_confirmed, confirmed_at, notes, created_at, updated_at FROM orders",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -96,7 +96,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出订单图案项（印花行业专用）
     let order_pattern_items: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, orderId, patternId, quantity, area, pricingMode, unitPrice, totalPrice, color_variant_id, created_at, updated_at FROM order_pattern_items",
+        "SELECT id, order_id, pattern_id, quantity, area, pricing_mode, unit_price, total_price, color_variant_id, created_at, updated_at FROM order_pattern_items",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -116,7 +116,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出产品
     let products: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, name, price, unit, createdAt, updatedAt FROM products",
+        "SELECT id, name, price, unit, created_at, updated_at FROM products",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -131,7 +131,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出图案
     let patterns: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount, localFilePath, customerId, folder_id, color_type, preview_image, createdAt, updatedAt FROM patterns",
+        "SELECT id, name, code, actual_height, bleed_height, units_per_row, row_count, local_file_path, customer_id, folder_id, color_type, preview_image, created_at, updated_at FROM patterns",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -192,7 +192,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出图案文件夹
     let pattern_folders: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at FROM pattern_folders",
+        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at FROM pattern_folders",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -212,7 +212,7 @@ pub async fn export_data(db: State<'_, Database>) -> Result<String, String> {
 
     // 导出图案颜色变体
     let pattern_colors: Vec<Value> = db.sqlite().query_map(
-        "SELECT id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at FROM pattern_colors",
+        "SELECT id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at FROM pattern_colors",
         &[],
         |row| Ok(serde_json::json!({
             "id": row.get::<_, String>(0)?,
@@ -317,7 +317,7 @@ pub async fn import_data(
                 let address = customer["address"].as_str();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO customers (id, name, phone, address, balance, creditLimit, createdAt, updatedAt)
+                    "INSERT OR REPLACE INTO customers (id, name, phone, address, balance, credit_limit, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -342,7 +342,7 @@ pub async fn import_data(
                 let unit = product["unit"].as_str().unwrap_or("件");
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO products (id, name, price, unit, createdAt, updatedAt)
+                    "INSERT OR REPLACE INTO products (id, name, price, unit, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -369,7 +369,7 @@ pub async fn import_data(
                 let customer_id = folder["customerId"].as_str();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at)
+                    "INSERT OR REPLACE INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -402,7 +402,7 @@ pub async fn import_data(
                 let preview_image = pattern["previewImage"].as_str();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount, localFilePath, customerId, folder_id, color_type, preview_image, isActive, createdAt, updatedAt)
+                    "INSERT OR REPLACE INTO patterns (id, name, code, actual_height, bleed_height, units_per_row, row_count, local_file_path, customer_id, folder_id, color_type, preview_image, is_active, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -436,7 +436,7 @@ pub async fn import_data(
                 let image = color["image"].as_str();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO pattern_colors (id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at)
+                    "INSERT OR REPLACE INTO pattern_colors (id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -464,7 +464,7 @@ pub async fn import_data(
                 let confirmed_at = order["confirmedAt"].as_i64();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO orders (id, customerId, orderDate, totalAmount, is_confirmed, confirmed_at, notes, createdAt, updatedAt)
+                    "INSERT OR REPLACE INTO orders (id, customer_id, order_date, total_amount, is_confirmed, confirmed_at, notes, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     [
                         &id as &dyn rusqlite::ToSql,
@@ -494,7 +494,7 @@ pub async fn import_data(
                 let color_variant_id = item["colorVariantId"].as_str();
 
                 tx.execute(
-                    "INSERT OR REPLACE INTO order_pattern_items (id, orderId, patternId, quantity, area, pricingMode, unitPrice, totalPrice, color_variant_id, created_at, updated_at)
+                    "INSERT OR REPLACE INTO order_pattern_items (id, order_id, pattern_id, quantity, area, pricing_mode, unit_price, total_price, color_variant_id, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     [
                         &id as &dyn rusqlite::ToSql,

@@ -632,10 +632,19 @@ export default function Patterns({ onNavigate }: PatternsProps) {
       if (pattern.previewImage) {
         imageUrl = pattern.previewImage;
       } else if (pattern.localFilePath) {
-        try {
-          imageUrl = await PatternApi.getPatternImage(pattern.localFilePath);
-        } catch (err) {
-          console.error('加载编辑预览图失败:', err);
+        // 使用全局缓存
+        const cached = getPatternImage(pattern.localFilePath);
+        if (cached) {
+          imageUrl = cached;
+        } else {
+          try {
+            imageUrl = await PatternApi.getPatternImage(pattern.localFilePath);
+            if (imageUrl) {
+              setPatternImage(pattern.localFilePath, imageUrl);
+            }
+          } catch (err) {
+            console.error('加载编辑预览图失败:', err);
+          }
         }
       }
       setEditPreviewImage(imageUrl);
@@ -705,7 +714,19 @@ export default function Patterns({ onNavigate }: PatternsProps) {
     try {
       setPreviewLoading(true);
       setCurrentPattern(pattern);
-      const imageData = await PatternApi.getPatternImage(pattern.localFilePath);
+
+      // 使用全局缓存
+      let imageData = '';
+      const cached = getPatternImage(pattern.localFilePath);
+      if (cached) {
+        imageData = cached;
+      } else {
+        imageData = await PatternApi.getPatternImage(pattern.localFilePath);
+        if (imageData) {
+          setPatternImage(pattern.localFilePath, imageData);
+        }
+      }
+
       setPreviewImage(imageData);
       setPreviewVisible(true);
     } catch (error) {

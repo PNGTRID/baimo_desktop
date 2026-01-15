@@ -12,7 +12,7 @@ use chrono::Datelike;
 pub async fn get_dashboard_stats(db: State<'_, Database>) -> Result<DashboardStats, String> {
     // 1. 获取客户总数
     let customers_count: i32 = db.sqlite().query_row(
-        "SELECT COUNT(*) FROM customers WHERE isActive = 1",
+        "SELECT COUNT(*) FROM customers WHERE is_active = 1",
         &[],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to fetch customers count: {:?}", e))?
@@ -20,7 +20,7 @@ pub async fn get_dashboard_stats(db: State<'_, Database>) -> Result<DashboardSta
 
     // 2. 获取图案总数
     let patterns_count: i32 = db.sqlite().query_row(
-        "SELECT COUNT(*) FROM patterns WHERE isActive = 1",
+        "SELECT COUNT(*) FROM patterns WHERE is_active = 1",
         &[],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to fetch patterns count: {:?}", e))?
@@ -44,7 +44,7 @@ pub async fn get_dashboard_stats(db: State<'_, Database>) -> Result<DashboardSta
         .timestamp();
 
     let monthly_revenue: f64 = db.sqlite().query_row(
-        "SELECT COALESCE(SUM(totalAmount), 0) FROM orders WHERE date(createdAt, 'unixepoch') >= date(?1, 'unixepoch')",
+        "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE date(created_at, 'unixepoch') >= date(?1, 'unixepoch')",
         &[&month_start as &dyn rusqlite::ToSql],
         |row| row.get(0),
     ).map_err(|e| format!("Failed to fetch monthly revenue: {:?}", e))?
@@ -71,7 +71,7 @@ pub async fn get_company_financial_overview(db: State<'_, Database>) -> Result<C
             COALESCE(SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END), 0) as positive_count,
             COALESCE(SUM(CASE WHEN balance < 0 THEN 1 ELSE 0 END), 0) as negative_count,
             COALESCE(SUM(CASE WHEN balance = 0 THEN 1 ELSE 0 END), 0) as zero_count
-         FROM customers WHERE isActive = 1",
+         FROM customers WHERE is_active = 1",
         &[],
         |row| {
             Ok(CompanyFinancialOverview {
@@ -152,15 +152,15 @@ pub async fn get_production_stats(
             COALESCE(SUM(
                 CASE
                     WHEN opi.area > 0 THEN opi.area
-                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actualHeight + p.bleedHeight) * p.unitsPerRow))
+                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actual_height + p.bleed_height) * p.units_per_row))
                 END
             ), 0) as total_area,
-            COALESCE(SUM(opi.totalPrice), 0) as total_revenue,
-            COUNT(DISTINCT opi.orderId) as order_count
+            COALESCE(SUM(opi.total_price), 0) as total_revenue,
+            COUNT(DISTINCT opi.order_id) as order_count
          FROM order_pattern_items opi
-         JOIN orders o ON opi.orderId = o.id
-         JOIN patterns p ON opi.patternId = p.id
-         WHERE date(o.createdAt, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.createdAt, 'unixepoch') <= date(?2, 'unixepoch')",
+         JOIN orders o ON opi.order_id = o.id
+         JOIN patterns p ON opi.pattern_id = p.id
+         WHERE date(o.created_at, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.created_at, 'unixepoch') <= date(?2, 'unixepoch')",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],
         |row| {
             Ok(ProductionStats {
@@ -184,20 +184,20 @@ pub async fn get_production_stats(
     // 获取每日统计数据
     let daily_breakdown = db.sqlite().query_map(
         "SELECT
-            date(o.createdAt, 'unixepoch') as date,
+            date(o.created_at, 'unixepoch') as date,
             COALESCE(SUM(
                 CASE
                     WHEN opi.area > 0 THEN opi.area
-                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actualHeight + p.bleedHeight) * p.unitsPerRow))
+                    ELSE (opi.quantity * 1.0 / (160.0 / (p.actual_height + p.bleed_height) * p.units_per_row))
                 END
             ), 0) as area,
-            COALESCE(SUM(opi.totalPrice), 0) as revenue,
+            COALESCE(SUM(opi.total_price), 0) as revenue,
             COUNT(DISTINCT o.id) as order_count
          FROM order_pattern_items opi
-         JOIN orders o ON opi.orderId = o.id
-         JOIN patterns p ON opi.patternId = p.id
-         WHERE date(o.createdAt, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.createdAt, 'unixepoch') <= date(?2, 'unixepoch')
-         GROUP BY date(o.createdAt, 'unixepoch')
+         JOIN orders o ON opi.order_id = o.id
+         JOIN patterns p ON opi.pattern_id = p.id
+         WHERE date(o.created_at, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.created_at, 'unixepoch') <= date(?2, 'unixepoch')
+         GROUP BY date(o.created_at, 'unixepoch')
          ORDER BY date ASC",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],
         |row| {

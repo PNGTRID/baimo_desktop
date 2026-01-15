@@ -200,6 +200,9 @@ backend-*.ts
 backend/tsconfig.tsbuildinfo
 *.buildinfo
 
+# Claude Code 临时文件
+tmpclaude-*
+
 # Documentation garbage
 docs/temp/
 docs/BRAND.md
@@ -281,4 +284,6 @@ docs/temp/
 
 # Tauri specific
 /src-tauri/icons/icon.png
+/src-tauri/icons/icon.ico
 /src-tauri/gen/
+/src-tauri/resources/

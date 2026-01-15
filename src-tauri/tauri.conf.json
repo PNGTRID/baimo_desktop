@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.json",
   "productName": "PNG部落记账",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.pngtribe.ledger",
   "build": {
     "beforeDevCommand": "cd frontend && npm run dev",
@@ -29,13 +29,23 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/256x256.png",
-      "icons/512x512.png"
+      "icons/512x512.png",
+      "icons/icon.ico"
     ],
+    "resources": [
+      "resources/imagemagick/*",
+      "resources/imagemagick/modules/**/*"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
     "category": "Business",
     "shortDescription": "PNG部落记账系统桌面版",
     "longDescription": "专为印花行业打造的本地记账管理软件"

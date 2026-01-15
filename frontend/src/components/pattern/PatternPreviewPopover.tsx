@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Popover, Spin, Typography, Space } from 'antd';
 import { FileImageOutlined, WarningOutlined } from '@ant-design/icons';
 import { PatternApi } from '../../services/tauriApi';
+import { useStore } from '../../store/useStore';
 
 const { Text } = Typography;
 
@@ -27,8 +28,8 @@ export const PatternPreviewPopover: React.FC<PatternPreviewPopoverProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  // 缓存已加载的预览图,避免重复请求
-  const previewCache = useRef<Map<string, string>>(new Map());
+  // 使用全局缓存
+  const { getPatternImage, setPatternImage: cachePatternImage } = useStore();
   const loadingRef = useRef(false); // 防止重复加载
 
   /**
@@ -40,19 +41,11 @@ export const PatternPreviewPopover: React.FC<PatternPreviewPopoverProps> = ({
 
     console.log(`${LOG_PREFIX} [${requestId}] 开始加载预览: patternId=${patternId}`);
 
-    // 如果正在加载或已缓存,直接返回
+    // 如果正在加载,直接返回
     if (loadingRef.current) {
       console.log(`${LOG_PREFIX} [${requestId}] 已在加载中，跳过`);
       return;
     }
-    if (previewCache.current.has(patternId)) {
-      const cached = previewCache.current.get(patternId)!;
-      console.log(`${LOG_PREFIX} [${requestId}] 缓存命中: size=${cached.length} bytes`);
-      setPreviewImage(cached);
-      return;
-    }
-
-    console.log(`${LOG_PREFIX} [${requestId}] 缓存未命中，开始加载`);
 
     loadingRef.current = true;
     setLoading(true);
@@ -74,22 +67,32 @@ export const PatternPreviewPopover: React.FC<PatternPreviewPopoverProps> = ({
         console.log(`${LOG_PREFIX} [${requestId}] 步骤2a: 使用预置预览图: size=${pattern.previewImage.length} bytes`);
         imageUrl = pattern.previewImage;
       }
-      // 3. 备用: 使用 localFilePath 动态加载
+      // 3. 备用: 使用 localFilePath 动态加载（使用全局缓存）
       else if (pattern.localFilePath) {
-        console.log(`${LOG_PREFIX} [${requestId}] 步骤2b: 动态生成预览图: path=${pattern.localFilePath}`);
-        const genStart = performance.now();
-        try {
-          imageUrl = await PatternApi.getPatternImage(pattern.localFilePath);
-          const genElapsed = performance.now() - genStart;
-          console.log(`${LOG_PREFIX} [${requestId}] 动态预览生成成功: 耗时=${genElapsed.toFixed(0)}ms, size=${imageUrl.length} bytes`);
-        } catch (err) {
-          const genElapsed = performance.now() - genStart;
-          console.error(`${LOG_PREFIX} [${requestId}] 动态预览生成失败: 耗时=${genElapsed.toFixed(0)}ms, error=`, err);
+        // 检查全局缓存
+        const cached = getPatternImage(pattern.localFilePath);
+        if (cached) {
+          console.log(`${LOG_PREFIX} [${requestId}] 全局缓存命中: size=${cached.length} bytes`);
+          imageUrl = cached;
+        } else {
+          console.log(`${LOG_PREFIX} [${requestId}] 步骤2b: 动态生成预览图: path=${pattern.localFilePath}`);
+          const genStart = performance.now();
+          try {
+            imageUrl = await PatternApi.getPatternImage(pattern.localFilePath);
+            const genElapsed = performance.now() - genStart;
+            console.log(`${LOG_PREFIX} [${requestId}] 动态预览生成成功: 耗时=${genElapsed.toFixed(0)}ms, size=${imageUrl.length} bytes`);
+            // 存入全局缓存
+            if (imageUrl) {
+              cachePatternImage(pattern.localFilePath, imageUrl);
+            }
+          } catch (err) {
+            const genElapsed = performance.now() - genStart;
+            console.error(`${LOG_PREFIX} [${requestId}] 动态预览生成失败: 耗时=${genElapsed.toFixed(0)}ms, error=`, err);
+          }
         }
       }
 
       if (imageUrl) {
-        previewCache.current.set(patternId, imageUrl);
         setPreviewImage(imageUrl);
         const totalElapsed = performance.now() - loadStart;
         console.log(`${LOG_PREFIX} [${requestId}] 预览加载成功: 总耗时=${totalElapsed.toFixed(0)}ms`);
@@ -106,7 +109,7 @@ export const PatternPreviewPopover: React.FC<PatternPreviewPopoverProps> = ({
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [patternId]);
+  }, [patternId, getPatternImage, cachePatternImage]);
 
   /**
    * Popover 打开/关闭回调

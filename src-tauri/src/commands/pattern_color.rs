@@ -13,7 +13,7 @@ pub async fn get_pattern_colors(
     db: State<'_, Database>,
 ) -> Result<Vec<PatternColor>, String> {
     db.sqlite().query_map(
-        "SELECT id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at
+        "SELECT id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at
          FROM pattern_colors
          WHERE pattern_id = ?1
          ORDER BY is_default DESC, name ASC",
@@ -41,7 +41,7 @@ pub async fn get_color_by_id(
     db: State<'_, Database>,
 ) -> Result<Option<PatternColor>, String> {
     db.sqlite().query_row(
-        "SELECT id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at
+        "SELECT id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at
          FROM pattern_colors WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| {
@@ -101,7 +101,7 @@ pub async fn create_color(
     let is_default = color_count == 0;
 
     db.sqlite().execute(
-        "INSERT INTO pattern_colors (id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at)
+        "INSERT INTO pattern_colors (id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         &[
             &id as &dyn rusqlite::ToSql,
@@ -160,7 +160,7 @@ pub async fn update_color(
     }
 
     if let Some(is_active) = request.is_active {
-        updates.push("isActive = ?".to_string());
+        updates.push("is_active = ?".to_string());
         params.push(if is_active { "1" } else { "0" }.to_string());
     }
 
@@ -313,9 +313,9 @@ pub async fn get_default_color(
     db: State<'_, Database>,
 ) -> Result<Option<PatternColor>, String> {
     db.sqlite().query_row(
-        "SELECT id, pattern_id, name, color, image, is_default, isActive, created_at, updated_at
+        "SELECT id, pattern_id, name, color, image, is_default, is_active, created_at, updated_at
          FROM pattern_colors
-         WHERE pattern_id = ?1 AND is_default = 1 AND isActive = 1
+         WHERE pattern_id = ?1 AND is_default = 1 AND is_active = 1
          LIMIT 1",
         &[&pattern_id as &dyn rusqlite::ToSql],
         |row| {

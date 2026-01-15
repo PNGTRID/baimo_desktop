@@ -183,7 +183,7 @@ pub async fn create_financial_record(
         )?;
 
         tx.execute(
-            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
+            "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
             [&balance_after as &dyn rusqlite::ToSql, &now, &request.customer_id],
         )?;
 
@@ -246,7 +246,7 @@ pub async fn get_customer_debts(
 
     let debts = db.sqlite().query_map(
         &format!(
-            "SELECT id, name, balance, creditLimit, notes
+            "SELECT id, name, balance, credit_limit, notes
              FROM customers
              {}
              ORDER BY {} {}",
@@ -407,7 +407,7 @@ pub async fn adjust_customer_balance(
         )?;
 
         tx.execute(
-            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
+            "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
             [&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
         )?;
 
@@ -507,9 +507,9 @@ pub async fn migrate_order_financial_records(db: State<'_, Database>) -> Result<
 
     // 先查询所有需要迁移的订单
     let orders_to_migrate: Vec<(String, String, String, f64, i64)> = db.sqlite().query_map(
-        "SELECT o.id, o.customerId, c.name, o.totalAmount, o.confirmed_at
+        "SELECT o.id, o.customer_id, c.name, o.total_amount, o.confirmed_at
          FROM orders o
-         LEFT JOIN customers c ON o.customerId = c.id
+         LEFT JOIN customers c ON o.customer_id = c.id
          WHERE o.is_confirmed = 1
          AND NOT EXISTS (
              SELECT 1 FROM financial_records fr

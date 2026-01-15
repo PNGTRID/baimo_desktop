@@ -47,14 +47,34 @@ pub fn run() {
 
             // 如果数据库不存在，尝试从开发环境复制
             if !db_path.exists() {
-                // 尝试从开发环境复制数据库
-                let dev_db_path = PathBuf::from("../prisma/dev.db");
-                if dev_db_path.exists() {
-                    std::fs::copy(&dev_db_path, &db_path)
-                        .expect("Failed to copy development database");
-                    println!("[启动] 已从开发环境复制数据库");
-                } else {
-                    println!("[启动] 警告: 未找到开发数据库，新数据库将被创建");
+                // 尝试多个可能的路径查找开发数据库
+                let possible_paths = vec![
+                    PathBuf::from("../prisma/dev.db"),
+                    PathBuf::from("../../prisma/dev.db"),
+                    PathBuf::from("prisma/dev.db"),
+                    // 绝对路径（开发环境）
+                    PathBuf::from("e:/Users/Administrator/Desktop/baimo_desktop/prisma/dev.db"),
+                ];
+
+                let mut copied = false;
+                for dev_db_path in possible_paths {
+                    if dev_db_path.exists() {
+                        match std::fs::copy(&dev_db_path, &db_path) {
+                            Ok(_) => {
+                                println!("[启动] 已从开发环境复制数据库: {}", dev_db_path.display());
+                                copied = true;
+                                break;
+                            }
+                            Err(e) => {
+                                eprintln!("[启动] 复制数据库失败: {}", e);
+                            }
+                        }
+                    }
+                }
+
+                if !copied {
+                    println!("[启动] 警告: 未找到开发数据库，新数据库将被创建（可能缺少表结构）");
+                    println!("[启动] 如果出现 'no such table' 错误，请运行数据库迁移");
                 }
             }
 
@@ -73,7 +93,25 @@ pub fn run() {
 
             let is_initialized = table_exists.is_ok() && table_exists.unwrap().unwrap_or(false);
             if !is_initialized {
-                println!("[启动] 数据库未初始化，正在准备...");
+                println!("[启动] 数据库未初始化，正在执行初始化脚本...");
+
+                // 执行内嵌的初始化SQL
+                let init_sql = include_str!("../../prisma/init_schema.sql");
+
+                // 分割SQL语句并逐条执行
+                for sql in init_sql.split(";") {
+                    let sql = sql.trim();
+                    if !sql.is_empty() {
+                        match db.sqlite().execute(sql, &[]) {
+                            Ok(_) => {},
+                            Err(e) => {
+                                eprintln!("[启动] SQL执行警告: {} (SQL: {})", e, &sql[..sql.len().min(50)]);
+                            }
+                        }
+                    }
+                }
+
+                println!("[启动] 数据库初始化完成!");
             }
 
             // 初始化默认配置（如果不存在）

@@ -26,8 +26,8 @@ fn get_config_f64(db: &Database, key: &str, default: f64) -> f64 {
 #[tauri::command]
 pub async fn get_customers(db: State<'_, Database>) -> Result<Vec<Customer>, String> {
     db.sqlite().query_map(
-        "SELECT id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt
-         FROM customers ORDER BY createdAt DESC",
+        "SELECT id, name, balance, credit_limit, unit_price, notes, is_active, created_at, updated_at
+         FROM customers ORDER BY created_at DESC",
         &[],
         |row: &rusqlite::Row| {
             let created_at_ts: i64 = row.get(7)?;
@@ -58,7 +58,7 @@ pub async fn get_customer_by_id(
     db: State<'_, Database>,
 ) -> Result<Option<Customer>, String> {
     let result = db.sqlite().query_row(
-        "SELECT id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt
+        "SELECT id, name, balance, credit_limit, unit_price, notes, is_active, created_at, updated_at
          FROM customers WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row: &rusqlite::Row| {
@@ -116,7 +116,7 @@ pub async fn create_customer(
 
         // 1. 插入客户
         tx.execute(
-            "INSERT INTO customers (id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt)
+            "INSERT INTO customers (id, name, balance, credit_limit, unit_price, notes, is_active, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![
                 &customer_id,
@@ -134,7 +134,7 @@ pub async fn create_customer(
         // 2. 自动创建客户同名文件夹
         let folder_path = format!("/{}", request.name);
         tx.execute(
-            "INSERT INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at)
+            "INSERT INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 &folder_id,
@@ -184,11 +184,11 @@ pub async fn update_customer(
             params.push(balance.to_string());
         }
         if let Some(credit_limit) = request.credit_limit {
-            updates.push("creditLimit = ?");
+            updates.push("credit_limit = ?");
             params.push(credit_limit.to_string());
         }
         if let Some(unit_price) = request.unit_price {
-            updates.push("unitPrice = ?");
+            updates.push("unit_price = ?");
             params.push(unit_price.to_string());
         }
         if let Some(ref notes) = request.notes {
@@ -196,7 +196,7 @@ pub async fn update_customer(
             params.push(notes.clone());
         }
         if let Some(is_active) = request.is_active {
-            updates.push("isActive = ?");
+            updates.push("is_active = ?");
             params.push(if is_active { "1" } else { "0" }.to_string());
         }
 
@@ -204,7 +204,7 @@ pub async fn update_customer(
             return Ok(None);
         }
 
-        updates.push("updatedAt = ?");
+        updates.push("updated_at = ?");
         params.push(chrono::Utc::now().timestamp().to_string());
 
         let sql = format!("UPDATE customers SET {} WHERE id = ?", updates.join(", "));
@@ -223,7 +223,7 @@ pub async fn update_customer(
 
         // 使用 query_row 获取更新后的客户
         db.sqlite().query_row(
-            "SELECT id, name, balance, creditLimit, unitPrice, notes, isActive, createdAt, updatedAt
+            "SELECT id, name, balance, credit_limit, unit_price, notes, is_active, created_at, updated_at
              FROM customers WHERE id = ?1",
             &[&id as &dyn rusqlite::ToSql],
             |row: &rusqlite::Row| {

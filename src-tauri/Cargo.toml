@@ -1,6 +1,6 @@
 [package]
 name = "baimo-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "白墨记账系统桌面版"
 authors = ["you"]
 license = ""
@@ -12,6 +12,9 @@ default-run = "baimo-desktop"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "2.4"
 
 [dependencies]
 tauri = { version = "2.0", features = ["devtools"] }
@@ -38,6 +41,14 @@ tauri-plugin-opener = "2.5.3"
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+
+# 发布模式优化配置
+[profile.release]
+opt-level = 3           # 最高优化级别
+lto = true              # 启用链接时优化,减小体积
+codegen-units = 1       # 单个代码生成单元,最佳优化
+strip = true            # 移除调试符号,减小体积
+panic = "abort"         # panic 时直接终止,减小体积
 
 [lints.rust]
 # Tauri 使用 cfg(mobile) 条件编译，需要告诉 rustc 这是预期的

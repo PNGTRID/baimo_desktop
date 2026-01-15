@@ -51,9 +51,9 @@ fn generate_code() -> String {
 #[tauri::command]
 pub async fn get_patterns(db: State<'_, Database>) -> Result<Vec<Pattern>, String> {
     db.sqlite().query_map(
-        "SELECT id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                localFilePath, customerId, folder_id, preview_image, color_type, createdAt, updatedAt
-         FROM patterns ORDER BY createdAt DESC",
+        "SELECT id, name, code, actual_height, bleed_height, units_per_row, row_count,
+                local_file_path, customer_id, folder_id, preview_image, color_type, created_at, updated_at
+         FROM patterns ORDER BY created_at DESC",
         &[],
         |row: &rusqlite::Row| {
             Ok(Pattern {
@@ -83,8 +83,8 @@ pub async fn get_pattern_by_id(
     db: State<'_, Database>,
 ) -> Result<Option<Pattern>, String> {
     let result = db.sqlite().query_row(
-        "SELECT id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                localFilePath, customerId, folder_id, preview_image, color_type, createdAt, updatedAt
+        "SELECT id, name, code, actual_height, bleed_height, units_per_row, row_count,
+                local_file_path, customer_id, folder_id, preview_image, color_type, created_at, updated_at
          FROM patterns WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row: &rusqlite::Row| {
@@ -135,8 +135,8 @@ pub async fn create_pattern(
     };
 
     db.sqlite().execute(
-        "INSERT INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                               localFilePath, customerId, folder_id, isActive, createdAt, updatedAt)
+        "INSERT INTO patterns (id, name, code, actual_height, bleed_height, units_per_row, row_count,
+                               local_file_path, customer_id, folder_id, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         &[
             &id as &dyn rusqlite::ToSql,
@@ -191,8 +191,8 @@ pub async fn create_pattern_from_tiff(
     let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
 
     db.sqlite().execute(
-        "INSERT INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                               localFilePath, customerId, folder_id, preview_image, isActive, createdAt, updatedAt)
+        "INSERT INTO patterns (id, name, code, actual_height, bleed_height, units_per_row, row_count,
+                               local_file_path, customer_id, folder_id, preview_image, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         &[
             &id as &dyn rusqlite::ToSql,
@@ -247,25 +247,25 @@ pub async fn update_pattern(
             params.push(Box::new(c.clone()));
         }
         if let Some(h) = actual_height {
-            updates.push("actualHeight = ?");
+            updates.push("actual_height = ?");
             params.push(Box::new(h));
         }
         if let Some(h) = bleed_height {
-            updates.push("bleedHeight = ?");
+            updates.push("bleed_height = ?");
             params.push(Box::new(h));
         }
         if let Some(u) = units_per_row {
-            updates.push("unitsPerRow = ?");
+            updates.push("units_per_row = ?");
             params.push(Box::new(u));
         }
         if let Some(r) = row_count {
-            updates.push("rowCount = ?");
+            updates.push("row_count = ?");
             params.push(Box::new(r));
         }
         // 处理 customer_id: 空字符串表示清除，非空表示设置
         // 同时自动同步 folder_id（客户的根文件夹）
         if let Some(ref cid) = customer_id {
-            updates.push("customerId = ?");
+            updates.push("customer_id = ?");
             if cid.is_empty() {
                 // 清除客户时，同时清除 folder_id
                 params.push(Box::new(Option::<String>::None));
@@ -293,7 +293,7 @@ pub async fn update_pattern(
             return Ok(None);
         }
 
-        updates.push("updatedAt = ?");
+        updates.push("updated_at = ?");
         params.push(Box::new(chrono::Utc::now().timestamp()));
 
         let sql = format!("UPDATE patterns SET {} WHERE id = ?", updates.join(", "));
@@ -989,6 +989,10 @@ fn convert_with_imagemagick_simple(file_path: &str, max_size: u32) -> Result<Str
     use base64::{Engine as _, engine::general_purpose};
     use std::process::Stdio;
 
+    // 获取 ImageMagick 可执行文件路径和配置目录
+    let (magick_path, magick_home) = get_imagemagick_path()
+        .ok_or_else(|| "ImageMagick 未找到。应用已尝试使用内置版本和系统安装版本。".to_string())?;
+
     let temp_dir = std::env::temp_dir();
     let temp_output = temp_dir.join(format!("thumb_simple_{}.jpg", uuid::Uuid::new_v4()));
 
@@ -999,7 +1003,7 @@ fn convert_with_imagemagick_simple(file_path: &str, max_size: u32) -> Result<Str
     // 使用 ImageMagick 直接转换并缩放，使用 JPEG 压缩
     // -quality 60: JPEG 质量 60%（快速预览）
     // -strip: 移除所有元数据，减少文件大小
-    let convert_result = std::process::Command::new("magick")
+    let convert_result = create_imagemagick_command(&magick_path, &magick_home)
         .arg(format!("{}[0]", file_path))  // 只读取第一页
         .arg("-strip")      // 移除元数据
         .arg("-quality")    // JPEG 质量
@@ -1072,21 +1076,11 @@ fn generate_spot_color_preview(
     let start_time = std::time::Instant::now();
     eprintln!("[SPOT_COLOR] 开始生成专色预览: file={}, max_size={}", file_path, max_size);
 
+    // 获取 ImageMagick 可执行文件路径和配置目录
+    let (magick_path, magick_home) = get_imagemagick_path()
+        .ok_or_else(|| "ImageMagick 未找到。应用已尝试使用内置版本和系统安装版本。".to_string())?;
+
     let temp_dir = std::env::temp_dir();
-
-    // 首先检查 ImageMagick 是否可用
-    let check_start = std::time::Instant::now();
-    let check_result = std::process::Command::new("magick")
-        .arg("-version")
-        .output();
-    let check_elapsed = check_start.elapsed();
-    eprintln!("[SPOT_COLOR] ImageMagick检查: available={}, 耗时={}ms", check_result.is_ok(), check_elapsed.as_millis());
-
-    if check_result.is_err() {
-        let elapsed = start_time.elapsed();
-        eprintln!("[SPOT_COLOR] ImageMagick不可用: 总耗时={}ms", elapsed.as_millis());
-        return Err("ImageMagick 未安装或不在 PATH 中。请安装 ImageMagick 并确保可以使用 'magick' 命令。".to_string());
-    }
 
     // 方法1：尝试使用 ImageMagick 分离通道并提取第 5 个通道
     eprintln!("[SPOT_COLOR] 尝试方法1: 分离通道并提取第5通道");
@@ -1098,7 +1092,7 @@ fn generate_spot_color_preview(
         .map_err(|e| format!("复制文件失败: {}", e))?;
 
     // 使用 -separate 分离通道，然后提取第 5 通道
-    let extract_result = std::process::Command::new("magick")
+    let extract_result = create_imagemagick_command(&magick_path, &magick_home)
         .arg(&temp_input)
         .arg("-separate")  // 分离所有通道
         .arg("-channel")   // 选择通道
@@ -1183,7 +1177,7 @@ fn generate_spot_color_preview(
     std::fs::copy(file_path, &temp_input2)
         .map_err(|e| format!("复制文件失败: {}", e))?;
 
-    let extract_result2 = std::process::Command::new("magick")
+    let extract_result2 = create_imagemagick_command(&magick_path, &magick_home)
         .arg(format!("{}[4]", temp_input2.display()))  // [4] = 第 5 通道
         .arg(&temp_output2)
         .output();
@@ -1258,7 +1252,7 @@ fn generate_spot_color_preview(
     eprintln!("[SPOT_COLOR] 尝试方法3: 回退到RGB转换");
     let method3_start = std::time::Instant::now();
     let temp_rgb = temp_dir.join(format!("spot_rgb_{}.png", uuid::Uuid::new_v4()));
-    let convert_result = std::process::Command::new("magick")
+    let convert_result = create_imagemagick_command(&magick_path, &magick_home)
         .arg(file_path)
         .arg("-colorspace")
         .arg("RGB")
@@ -1417,7 +1411,7 @@ async fn process_single_tiff(
 
     // 检查是否已存在
     let existing_count: i32 = db.sqlite().query_row(
-        "SELECT COUNT(*) FROM patterns WHERE localFilePath = ?1",
+        "SELECT COUNT(*) FROM patterns WHERE local_file_path = ?1",
         &[&file_path_str as &dyn rusqlite::ToSql],
         |row| row.get(0),
     ).map_err(|e| format!("查询失败: {:?}", e))?.unwrap_or(0);
@@ -1456,8 +1450,8 @@ async fn process_single_tiff(
     let default_bleed_height = get_config_f64(&db, "default_bleed_height", 2.0);
 
     db.sqlite().execute(
-        "INSERT INTO patterns (id, name, code, actualHeight, bleedHeight, unitsPerRow, rowCount,
-                               localFilePath, customerId, folder_id, preview_image, isActive, createdAt, updatedAt)
+        "INSERT INTO patterns (id, name, code, actual_height, bleed_height, units_per_row, row_count,
+                               local_file_path, customer_id, folder_id, preview_image, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         &[
             &id as &dyn rusqlite::ToSql,
@@ -1638,35 +1632,105 @@ async fn create_folder_if_not_exists(
 // ImageMagick 辅助函数（用于处理不支持的 TIFF 格式）
 // ============================================================
 
-/// 检查 ImageMagick 是否可用
-fn check_imagemagick_available() -> bool {
-    use std::process::Command;
+/// 获取 ImageMagick 可执行文件路径和配置目录（优先使用捆绑版本）
+/// 返回 (可执行文件路径, 配置目录路径Option)
+fn get_imagemagick_path() -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    use std::env;
+    use std::path::PathBuf;
 
-    // macOS 上尝试 magick 或 convert
-    let result = Command::new("magick")
-        .arg("-version")
-        .output();
-
-    if result.is_ok() {
-        return true;
+    // 1. 尝试使用捆绑的 ImageMagick（推荐）
+    if let Ok(exe_dir) = env::current_exe() {
+        eprintln!("[ImageMagick调试] 当前可执行文件路径: {:?}", exe_dir);
+        if let Some(parent) = exe_dir.parent() {
+            eprintln!("[ImageMagick调试] 父目录: {:?}", parent);
+            // Windows: 可执行文件同目录下的 resources/imagemagick 文件夹
+            let bundled_dir = parent.join("resources").join("imagemagick");
+            let bundled_magick = bundled_dir.join("magick.exe");
+            eprintln!("[ImageMagick调试] 检查捆绑路径: {:?}", bundled_magick);
+            eprintln!("[ImageMagick调试] 文件是否存在: {}", bundled_magick.exists());
+            if bundled_magick.exists() {
+                eprintln!("[ImageMagick] 使用捆绑版本: {:?}", bundled_magick);
+                eprintln!("[ImageMagick] 配置目录: {:?}", bundled_dir);
+                return Some((bundled_magick, Some(bundled_dir)));
+            } else {
+                eprintln!("[ImageMagick调试] 捆绑版本不存在,尝试列出父目录内容");
+                if let Ok(entries) = std::fs::read_dir(parent) {
+                    for entry in entries.take(10) {
+                        if let Ok(entry) = entry {
+                            eprintln!("[ImageMagick调试] - {:?}", entry.path());
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // 尝试 convert 命令（旧版 ImageMagick）
-    let result = Command::new("convert")
-        .arg("-version")
-        .output();
+    // 2. 尝试系统 PATH 中的 magick
+    eprintln!("[ImageMagick调试] 尝试系统 PATH 中的 magick");
+    if let Ok(_) = std::process::Command::new("magick").arg("-version").output() {
+        eprintln!("[ImageMagick] 使用系统安装的 magick");
+        return Some((PathBuf::from("magick"), None));
+    }
 
-    result.is_ok()
+    // 3. 尝试系统 PATH 中的 convert（旧版）
+    eprintln!("[ImageMagick调试] 尝试系统 PATH 中的 convert");
+    if let Ok(_) = std::process::Command::new("convert").arg("-version").output() {
+        eprintln!("[ImageMagick] 使用系统安装的 convert");
+        return Some((PathBuf::from("convert"), None));
+    }
+
+    eprintln!("[ImageMagick] 未找到可用的 ImageMagick");
+    None
+}
+
+/// 检查 ImageMagick 是否可用
+fn check_imagemagick_available() -> bool {
+    get_imagemagick_path().is_some()
+}
+
+/// 创建配置好环境变量的 ImageMagick 命令
+fn create_imagemagick_command(magick_path: &std::path::Path, magick_home: &Option<std::path::PathBuf>) -> std::process::Command {
+    use std::process::Stdio;
+
+    let mut cmd = std::process::Command::new(magick_path);
+
+    // 隐藏控制台窗口（Windows）
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    // 重定向标准输入输出，防止弹窗
+    cmd.stdin(Stdio::null())
+       .stdout(Stdio::piped())
+       .stderr(Stdio::piped());
+
+    // 如果使用捆绑版本，设置环境变量
+    if let Some(ref dir) = magick_home {
+        cmd.env("MAGICK_HOME", dir);
+        cmd.env("MAGICK_CONFIGURE_PATH", dir);
+        cmd.env("MAGICK_CODER_MODULE_PATH", dir.join("modules").join("coders"));
+        cmd.env("MAGICK_FILTER_MODULE_PATH", dir.join("modules").join("filters"));
+
+        // 关键：将ImageMagick目录添加到PATH，让模块DLL能找到依赖的CORE_RL_*.dll
+        if let Ok(current_path) = std::env::var("PATH") {
+            let new_path = format!("{};{}", dir.display(), current_path);
+            cmd.env("PATH", new_path);
+        } else {
+            cmd.env("PATH", dir);
+        }
+    }
+
+    cmd
 }
 
 /// 使用 ImageMagick 将 TIFF 转换为 PNG（内存操作）
 fn convert_tiff_with_imagemagick(tiff_data: &[u8]) -> Result<Vec<u8>, String> {
-    use std::process::Command;
-
-    // 检查 ImageMagick 是否可用
-    if !check_imagemagick_available() {
-        return Err("ImageMagick 未安装。请运行: brew install imagemagick".to_string());
-    }
+    // 获取 ImageMagick 可执行文件路径和配置目录
+    let (magick_path, magick_home) = get_imagemagick_path()
+        .ok_or_else(|| "ImageMagick 未找到。应用已尝试使用内置版本和系统安装版本。".to_string())?;
 
     // 创建临时文件
     let temp_dir = std::env::temp_dir();
@@ -1677,23 +1741,14 @@ fn convert_tiff_with_imagemagick(tiff_data: &[u8]) -> Result<Vec<u8>, String> {
     std::fs::write(&temp_tiff, tiff_data)
         .map_err(|e| format!("写入临时文件失败: {}", e))?;
 
-    // 使用 ImageMagick 转换（尝试 magick 和 convert）
-    let mut result = Command::new("magick")
+    // 使用获取到的 ImageMagick 路径进行转换
+    eprintln!("[ImageMagick] 转换 TIFF: {:?} -> {:?}", temp_tiff, temp_png);
+    let result = create_imagemagick_command(&magick_path, &magick_home)
         .arg(&temp_tiff)
         .args(["-depth", "8"])
         .args(["-colorspace", "RGB"])
         .arg(&temp_png)
         .output();
-
-    // 如果 magick 失败，尝试 convert
-    if result.is_err() {
-        result = Command::new("convert")
-            .arg(&temp_tiff)
-            .args(["-depth", "8"])
-            .args(["-colorspace", "RGB"])
-            .arg(&temp_png)
-            .output();
-    }
 
     // 清理临时 TIFF 文件
     let _ = std::fs::remove_file(&temp_tiff);

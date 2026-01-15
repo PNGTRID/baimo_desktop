@@ -10,7 +10,7 @@ use tauri::State;
 #[tauri::command]
 pub async fn get_folders(db: State<'_, Database>) -> Result<Vec<PatternFolder>, String> {
     db.sqlite().query_map(
-        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at
+        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at
          FROM pattern_folders ORDER BY sort_order ASC, name ASC",
         &[],
         |row| {
@@ -42,7 +42,7 @@ pub async fn get_folder_tree(db: State<'_, Database>) -> Result<Vec<FolderTreeNo
 
     for folder in &folders {
         let count: i32 = db.sqlite().query_row(
-            "SELECT COUNT(*) FROM patterns WHERE folder_id = ?1 AND isActive = 1",
+            "SELECT COUNT(*) FROM patterns WHERE folder_id = ?1 AND is_active = 1",
             &[&folder.id as &dyn rusqlite::ToSql],
             |row| row.get(0),
         ).map_err(|e| format!("Failed to count patterns: {:?}", e))?
@@ -87,7 +87,7 @@ pub async fn get_folder_by_id(
     db: State<'_, Database>,
 ) -> Result<Option<PatternFolder>, String> {
     db.sqlite().query_row(
-        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at
+        "SELECT id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at
          FROM pattern_folders WHERE id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| {
@@ -138,7 +138,7 @@ pub async fn create_folder(
     .unwrap_or(-1);
 
     db.sqlite().execute(
-        "INSERT INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, isActive, created_at, updated_at)
+        "INSERT INTO pattern_folders (id, name, parent_id, level, path, sort_order, customer_id, is_system, is_active, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         &[
             &id as &dyn rusqlite::ToSql,
@@ -178,7 +178,7 @@ pub async fn update_folder(
         params.push(sort_order.to_string());
     }
     if let Some(is_active) = request.is_active {
-        updates.push("isActive = ?");
+        updates.push("is_active = ?");
         params.push(if is_active { "1" } else { "0" }.to_string());
     }
 

@@ -40,11 +40,11 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
     // 1. 查询所有订单（JOIN customer）
     let orders = db.sqlite().query_map(
         "SELECT
-            o.id, o.customerId, c.name as customer_name,
-            o.totalAmount, o.is_confirmed, o.confirmed_at, o.notes, o.createdAt, o.updatedAt
+            o.id, o.customer_id, c.name as customer_name,
+            o.total_amount, o.is_confirmed, o.confirmed_at, o.notes, o.created_at, o.updated_at
         FROM orders o
-        LEFT JOIN customers c ON o.customerId = c.id
-        ORDER BY o.createdAt DESC",
+        LEFT JOIN customers c ON o.customer_id = c.id
+        ORDER BY o.created_at DESC",
         &[],
         |row: &rusqlite::Row| {
             Ok((
@@ -82,13 +82,13 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
         // 获取订单的图案项
         let items = db.sqlite().query_map(
             "SELECT
-                opi.id, opi.patternId, p.name as pattern_name,
-                opi.quantity, opi.area, opi.pricingMode, opi.unitPrice, opi.totalPrice,
+                opi.id, opi.pattern_id, p.name as pattern_name,
+                opi.quantity, opi.area, opi.pricing_mode, opi.unit_price, opi.total_price,
                 opi.color_variant_id, pc.name as color_variant_name
             FROM order_pattern_items opi
-            LEFT JOIN patterns p ON opi.patternId = p.id
+            LEFT JOIN patterns p ON opi.pattern_id = p.id
             LEFT JOIN pattern_colors pc ON opi.color_variant_id = pc.id
-            WHERE opi.orderId = ?1",
+            WHERE opi.order_id = ?1",
             &[&order_id as &dyn rusqlite::ToSql],
             |row: &rusqlite::Row| {
                 Ok(OrderPatternItem {
@@ -133,10 +133,10 @@ pub async fn get_order_by_id(
     // 查询订单
     let order = db.sqlite().query_row(
         "SELECT
-            o.id, o.customerId, c.name as customer_name,
-            o.totalAmount, o.is_confirmed, o.confirmed_at, o.notes, o.createdAt, o.updatedAt
+            o.id, o.customer_id, c.name as customer_name,
+            o.total_amount, o.is_confirmed, o.confirmed_at, o.notes, o.created_at, o.updated_at
         FROM orders o
-        LEFT JOIN customers c ON o.customerId = c.id
+        LEFT JOIN customers c ON o.customer_id = c.id
         WHERE o.id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row: &rusqlite::Row| {
@@ -173,13 +173,13 @@ pub async fn get_order_by_id(
             // 获取订单的图案项
             let items = db.sqlite().query_map(
                 "SELECT
-                    opi.id, opi.patternId, p.name as pattern_name,
-                    opi.quantity, opi.area, opi.pricingMode, opi.unitPrice, opi.totalPrice,
+                    opi.id, opi.pattern_id, p.name as pattern_name,
+                    opi.quantity, opi.area, opi.pricing_mode, opi.unit_price, opi.total_price,
                     opi.color_variant_id, pc.name as color_variant_name
                 FROM order_pattern_items opi
-                LEFT JOIN patterns p ON opi.patternId = p.id
+                LEFT JOIN patterns p ON opi.pattern_id = p.id
                 LEFT JOIN pattern_colors pc ON opi.color_variant_id = pc.id
-                WHERE opi.orderId = ?1",
+                WHERE opi.order_id = ?1",
                 &[&order_id as &dyn rusqlite::ToSql],
                 |row: &rusqlite::Row| {
                     Ok(OrderPatternItem {
@@ -236,7 +236,7 @@ pub async fn create_order(
 
     // 1. 获取客户信息（包含 unitPrice）
     let customer = db.sqlite().query_row(
-        "SELECT id, name, unitPrice FROM customers WHERE id = ?1",
+        "SELECT id, name, unit_price FROM customers WHERE id = ?1",
         &[&request.customer_id as &dyn rusqlite::ToSql],
         |row| {
             Ok((
@@ -265,7 +265,7 @@ pub async fn create_order(
     for item_request in &request.items {
         // 获取图案信息（包含 bleedHeight）
         let pattern = db.sqlite().query_row(
-            "SELECT id, name, actualHeight, bleedHeight, unitsPerRow FROM patterns WHERE id = ?1",
+            "SELECT id, name, actual_height, bleed_height, units_per_row FROM patterns WHERE id = ?1",
             &[&item_request.pattern_id as &dyn rusqlite::ToSql],
             |row| {
                 Ok((
@@ -344,7 +344,7 @@ pub async fn create_order(
     let order_id = db.sqlite().transaction(|tx| {
         // 插入订单（默认未确认）
         tx.execute(
-            "INSERT INTO orders (id, customerId, totalAmount, is_confirmed, notes, orderDate, createdAt, updatedAt)
+            "INSERT INTO orders (id, customer_id, total_amount, is_confirmed, notes, order_date, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             [
                 &generate_id() as &dyn rusqlite::ToSql,
@@ -376,7 +376,7 @@ pub async fn create_order(
                      item_request.pattern_id, item_request.color_variant_id, order_item.unit_price, order_item.total_price);
 
             tx.execute(
-                "INSERT INTO order_pattern_items (id, orderId, patternId, color_variant_id, quantity, area, pricingMode, unitPrice, totalPrice, created_at, updated_at)
+                "INSERT INTO order_pattern_items (id, order_id, pattern_id, color_variant_id, quantity, area, pricing_mode, unit_price, total_price, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 [
                     &order_item.id as &dyn rusqlite::ToSql,
@@ -432,7 +432,7 @@ pub async fn update_order(
     // 只更新备注
     if let Some(notes) = request.notes {
         db.sqlite().execute(
-            "UPDATE orders SET notes = ?1, updatedAt = ?2 WHERE id = ?3",
+            "UPDATE orders SET notes = ?1, updated_at = ?2 WHERE id = ?3",
             &[
                 &notes as &dyn rusqlite::ToSql,
                 &chrono::Utc::now().timestamp(),
@@ -457,8 +457,8 @@ pub async fn confirm_order(
 
     // 先获取订单信息用于日志
     let order_info = db.sqlite().query_row(
-        "SELECT o.customerId, c.name, o.totalAmount
-         FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+        "SELECT o.customer_id, c.name, o.total_amount
+         FROM orders o LEFT JOIN customers c ON o.customer_id = c.id
          WHERE o.id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?)),
@@ -468,8 +468,8 @@ pub async fn confirm_order(
     db.sqlite().transaction(|tx| {
         // 1. 获取订单和客户信息
         let (customer_id, customer_name, total_amount): (String, String, f64) = tx.query_row(
-            "SELECT o.customerId, c.name, o.totalAmount
-             FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+            "SELECT o.customer_id, c.name, o.total_amount
+             FROM orders o LEFT JOIN customers c ON o.customer_id = c.id
              WHERE o.id = ?1",
             &[&id as &dyn rusqlite::ToSql],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -484,7 +484,7 @@ pub async fn confirm_order(
 
         // 3. 确认订单
         tx.execute(
-            "UPDATE orders SET is_confirmed = ?1, confirmed_at = ?2, updatedAt = ?3 WHERE id = ?4",
+            "UPDATE orders SET is_confirmed = ?1, confirmed_at = ?2, updated_at = ?3 WHERE id = ?4",
             &[
                 &true as &dyn rusqlite::ToSql,
                 &now,
@@ -496,7 +496,7 @@ pub async fn confirm_order(
         // 4. 扣减余额
         let new_balance = current_balance - total_amount;
         tx.execute(
-            "UPDATE customers SET balance = ?1, updatedAt = ?2 WHERE id = ?3",
+            "UPDATE customers SET balance = ?1, updated_at = ?2 WHERE id = ?3",
             &[&new_balance as &dyn rusqlite::ToSql, &now, &customer_id],
         )?;
 
@@ -542,8 +542,8 @@ pub async fn delete_order(
 ) -> Result<bool, String> {
     // 先获取订单信息用于日志
     let order_info = db.sqlite().query_row(
-        "SELECT o.customerId, c.name, o.totalAmount
-         FROM orders o LEFT JOIN customers c ON o.customerId = c.id
+        "SELECT o.customer_id, c.name, o.total_amount
+         FROM orders o LEFT JOIN customers c ON o.customer_id = c.id
          WHERE o.id = ?1",
         &[&id as &dyn rusqlite::ToSql],
         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?)),
@@ -626,7 +626,7 @@ pub async fn update_order_full(
 
     // 1. 获取新客户信息（包含 unitPrice）
     let customer = db.sqlite().query_row(
-        "SELECT id, name, unitPrice FROM customers WHERE id = ?1",
+        "SELECT id, name, unit_price FROM customers WHERE id = ?1",
         &[&request.customer_id as &dyn rusqlite::ToSql],
         |row| {
             Ok((
@@ -652,7 +652,7 @@ pub async fn update_order_full(
     for item_request in &request.items {
         // 获取图案信息（包含 bleedHeight）
         let pattern = db.sqlite().query_row(
-            "SELECT id, name, actualHeight, bleedHeight, unitsPerRow FROM patterns WHERE id = ?1",
+            "SELECT id, name, actual_height, bleed_height, units_per_row FROM patterns WHERE id = ?1",
             &[&item_request.pattern_id as &dyn rusqlite::ToSql],
             |row| {
                 Ok((
@@ -724,7 +724,7 @@ pub async fn update_order_full(
     db.sqlite().transaction(|tx| {
         // 更新订单基本信息（不修改确认状态）
         tx.execute(
-            "UPDATE orders SET customerId = ?1, totalAmount = ?2, notes = ?3, updatedAt = ?4
+            "UPDATE orders SET customer_id = ?1, total_amount = ?2, notes = ?3, updated_at = ?4
              WHERE id = ?5",
             [
                 &customer_id as &dyn rusqlite::ToSql,
@@ -737,7 +737,7 @@ pub async fn update_order_full(
 
         // 删除原有订单项
         tx.execute(
-            "DELETE FROM order_pattern_items WHERE orderId = ?1",
+            "DELETE FROM order_pattern_items WHERE order_id = ?1",
             [&order_id],
         )?;
 
@@ -747,7 +747,7 @@ pub async fn update_order_full(
                      item_request.pattern_id, item_request.color_variant_id);
 
             tx.execute(
-                "INSERT INTO order_pattern_items (id, orderId, patternId, color_variant_id, quantity, area, pricingMode, unitPrice, totalPrice, created_at, updated_at)
+                "INSERT INTO order_pattern_items (id, order_id, pattern_id, color_variant_id, quantity, area, pricing_mode, unit_price, total_price, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 [
                     &order_item.id as &dyn rusqlite::ToSql,

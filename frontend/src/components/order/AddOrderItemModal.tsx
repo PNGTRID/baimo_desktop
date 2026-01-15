@@ -22,6 +22,7 @@ import { ShoppingCartOutlined, FileImageOutlined } from '@ant-design/icons';
 import { OrderApi, PatternApi, CustomerApi, PatternColorApi } from '@/services/tauriApi';
 import type { Order, Pattern, PatternColor, PricingMode, Customer } from '@/types';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
+import { useStore } from '@/store/useStore';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -47,6 +48,7 @@ export default function AddOrderItemModal({
   onCancel,
 }: AddOrderItemModalProps) {
   const { message } = App.useApp();
+  const { getPatternImage, setPatternImage } = useStore();
 
   // 数据状态
   const [orders, setOrders] = useState<Order[]>([]);
@@ -83,13 +85,24 @@ export default function AddOrderItemModal({
         }
         setPattern(patternData);
 
-        // 加载预览图
+        // 加载预览图（使用缓存）
         try {
           let imageUrl = '';
           if (patternData.previewImage) {
+            // 数据库中已有预览图
             imageUrl = patternData.previewImage;
           } else if (patternData.localFilePath) {
-            imageUrl = await PatternApi.getPatternImage(patternData.localFilePath);
+            // 先检查缓存
+            const cached = getPatternImage(patternData.localFilePath);
+            if (cached) {
+              imageUrl = cached;
+            } else {
+              // 缓存未命中，加载并缓存
+              imageUrl = await PatternApi.getPatternImage(patternData.localFilePath);
+              if (imageUrl) {
+                setPatternImage(patternData.localFilePath, imageUrl);
+              }
+            }
           }
           setPreviewImage(imageUrl);
         } catch (err) {
