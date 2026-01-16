@@ -5,8 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Divider, Space, Typography, Spin, Empty } from 'antd';
-import { CalendarOutlined, QrcodeOutlined, DollarOutlined, AppstoreOutlined, BorderOutlined } from '@ant-design/icons';
-import type { Order } from '@/types';
+import { CalendarOutlined, QrcodeOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { OrderApi, SettingsApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 
@@ -54,10 +53,12 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
         SettingsApi.getPaymentQrcodeImage('wechat'),
       ]);
 
-      // 筛选今日订单
-      const todayOrders = allOrders.filter((order) =>
-        dayjs(order.createdAt).isSame(dayjs(), 'day')
-      );
+      // 筛选今日订单 (使用本地时区,比较年月日)
+      const today = dayjs().format('YYYY-MM-DD');
+      const todayOrders = allOrders.filter((order) => {
+        const orderDate = dayjs(order.createdAt).format('YYYY-MM-DD');
+        return orderDate === today;
+      });
 
       // 计算汇总数据
       const confirmedOrders = todayOrders.filter((o) => o.isConfirmed);

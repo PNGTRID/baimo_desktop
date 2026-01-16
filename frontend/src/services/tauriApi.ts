@@ -4,6 +4,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import type { CustomerOrderStats } from '@/types';
 
 // Tauri 窗口类型扩展
 interface TauriWindow extends Window {

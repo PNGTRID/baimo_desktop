@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Modal, Card, List, Tag, Button, Space, Row, Col, App, Spin, Empty, Table, Typography, Divider } from 'antd';
+import { Modal, Card, List, Tag, Button, Space, Row, Col, App, Spin, Empty, Table, Typography } from 'antd';
 import { CalendarOutlined, CopyOutlined, DownloadOutlined, UserOutlined, CheckOutlined } from '@ant-design/icons';
 import { CustomerApi, OrderApi, PatternApi, SettingsApi } from '@/services/tauriApi';
 import type { Customer, Order, Pattern } from '@/types';

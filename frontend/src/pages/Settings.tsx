@@ -283,7 +283,7 @@ export default function Settings() {
 
       if (filePath) {
         message.loading('正在上传收款码...', 0);
-        const savedPath = await SettingsApi.uploadPaymentQrcode(paymentType, filePath);
+        await SettingsApi.uploadPaymentQrcode(paymentType, filePath);
         message.destroy();
         message.success('收款码上传成功');
         loadPaymentQrcodes();

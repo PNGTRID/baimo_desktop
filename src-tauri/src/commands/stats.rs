@@ -169,7 +169,7 @@ pub async fn get_production_stats(
          FROM order_pattern_items opi
          JOIN orders o ON opi.order_id = o.id
          JOIN patterns p ON opi.pattern_id = p.id
-         WHERE date(o.created_at, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.created_at, 'unixepoch') <= date(?2, 'unixepoch')",
+         WHERE date(o.created_at, 'unixepoch', 'localtime') >= date(?1, 'unixepoch', 'localtime') AND date(o.created_at, 'unixepoch', 'localtime') <= date(?2, 'unixepoch', 'localtime')",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],
         |row| {
             Ok(ProductionStats {
@@ -194,7 +194,7 @@ pub async fn get_production_stats(
     // 获取每日统计数据
     let daily_breakdown = db.sqlite().query_map(
         "SELECT
-            date(o.created_at, 'unixepoch') as date,
+            date(o.created_at, 'unixepoch', 'localtime') as date,
             COALESCE(SUM(
                 CASE
                     WHEN opi.area > 0 THEN opi.area
@@ -206,8 +206,8 @@ pub async fn get_production_stats(
          FROM order_pattern_items opi
          JOIN orders o ON opi.order_id = o.id
          JOIN patterns p ON opi.pattern_id = p.id
-         WHERE date(o.created_at, 'unixepoch') >= date(?1, 'unixepoch') AND date(o.created_at, 'unixepoch') <= date(?2, 'unixepoch')
-         GROUP BY date(o.created_at, 'unixepoch')
+         WHERE date(o.created_at, 'unixepoch', 'localtime') >= date(?1, 'unixepoch', 'localtime') AND date(o.created_at, 'unixepoch', 'localtime') <= date(?2, 'unixepoch', 'localtime')
+         GROUP BY date(o.created_at, 'unixepoch', 'localtime')
          ORDER BY date ASC",
         &[&start_ts as &dyn rusqlite::ToSql, &end_ts],
         |row| {

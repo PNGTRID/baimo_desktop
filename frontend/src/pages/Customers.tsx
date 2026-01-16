@@ -217,8 +217,8 @@ export default function Customers() {
             }}
             trigger={['click']}
           >
-            <Button type="link" size="small" icon={<CalendarOutlined />} suffix={<DownOutlined />}>
-              历史查询
+            <Button type="link" size="small" icon={<CalendarOutlined />}>
+              历史查询 <DownOutlined />
             </Button>
           </Dropdown>
           <Button

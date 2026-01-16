@@ -4,13 +4,14 @@ import {
   Table,
   Modal,
   App,
-  Card,
   Typography,
   Space,
   Popconfirm,
   Image,
   Upload,
   Divider,
+  Row,
+  Col,
 } from 'antd';
 import {
   PlusOutlined,

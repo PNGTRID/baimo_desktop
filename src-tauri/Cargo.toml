@@ -1,6 +1,6 @@
 [package]
 name = "baimo-desktop"
-version = "0.1.1"
+version = "2.0.1"
 description = "白墨记账系统桌面版"
 authors = ["you"]
 license = ""
