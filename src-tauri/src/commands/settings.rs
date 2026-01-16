@@ -8,7 +8,7 @@ use crate::models::{
     SystemLog, CreateSystemLogRequest, SystemLogParams, PaginatedSystemLogs,
 };
 use crate::services::Database;
-use tauri::State;
+use tauri::{State, Manager};
 
 // ============================================================
 // 应用配置管理
@@ -547,4 +547,137 @@ pub fn initialize_default_configs_sync(db: &Database) -> Result<Vec<AppConfig>, 
 #[tauri::command]
 pub async fn initialize_default_configs(db: State<'_, Database>) -> Result<Vec<AppConfig>, String> {
     initialize_default_configs_sync(&db)
+}
+
+// ============================================================
+// 收款码管理
+// ============================================================
+
+/// 上传收款码
+#[tauri::command]
+pub async fn upload_payment_qrcode(
+    payment_type: String,
+    file_path: String,
+    app: tauri::AppHandle,
+    db: State<'_, Database>,
+) -> Result<String, String> {
+    // 1. 验证支付类型
+    if payment_type != "alipay" && payment_type != "wechat" {
+        return Err("不支持的支付类型，仅支持 alipay（支付宝）或 wechat（微信）".to_string());
+    }
+
+    // 2. 获取应用数据目录并创建收款码文件夹
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let qrcode_dir = app_data_dir.join("qrcodes");
+    std::fs::create_dir_all(&qrcode_dir)
+        .map_err(|e| format!("Failed to create qrcodes directory: {}", e))?;
+
+    // 3. 复制文件到收款码目录
+    let source_path = std::path::Path::new(&file_path);
+    if !source_path.exists() {
+        return Err("源文件不存在".to_string());
+    }
+
+    let file_extension = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+    let dest_file_name = format!("payment_{}.{}", payment_type, file_extension);
+    let dest_path = qrcode_dir.join(&dest_file_name);
+
+    std::fs::copy(&source_path, &dest_path)
+        .map_err(|e| format!("Failed to copy qrcode file: {}", e))?;
+
+    // 4. 保存配置到数据库
+    let config_key = format!("payment_{}_qrcode", payment_type);
+    let config_value = dest_path.to_string_lossy().to_string();
+    let display_name = if payment_type == "alipay" {
+        "支付宝收款码"
+    } else {
+        "微信收款码"
+    };
+
+    let now = chrono::Utc::now().timestamp();
+
+    // 检查配置是否已存在
+    let existing: Option<String> = db.sqlite().query_row(
+        "SELECT id FROM app_configs WHERE key = ?1",
+        &[&config_key as &dyn rusqlite::ToSql],
+        |row| row.get(0),
+    ).ok().flatten();
+
+    if existing.is_some() {
+        // 更新现有配置
+        db.sqlite().execute(
+            "UPDATE app_configs SET value = ?1, description = ?2, category = 'PAYMENT', updated_at = ?3 WHERE key = ?4",
+            &[&config_value as &dyn rusqlite::ToSql, &display_name, &now, &config_key],
+        ).map_err(|e| format!("Failed to update qrcode config: {}", e))?;
+    } else {
+        // 创建新配置
+        let id = uuid::Uuid::new_v4().to_string();
+        db.sqlite().execute(
+            "INSERT INTO app_configs (id, key, value, description, category, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 'PAYMENT', ?5, ?6)",
+            &[&id as &dyn rusqlite::ToSql, &config_key, &config_value, &display_name, &now, &now],
+        ).map_err(|e| format!("Failed to create qrcode config: {}", e))?;
+    }
+
+    // 5. 记录系统日志
+    let _ = create_system_log(CreateSystemLogRequest {
+        level: "INFO".to_string(),
+        message: format!("上传{}收款码: {}", display_name, dest_path.display()),
+        metadata: Some(serde_json::json!({
+            "payment_type": payment_type,
+            "file_path": dest_path.to_string_lossy().to_string(),
+        }).to_string()),
+    }, db).await;
+
+    Ok(config_value)
+}
+
+/// 获取收款码路径
+#[tauri::command]
+pub async fn get_payment_qrcode(
+    payment_type: String,
+    db: State<'_, Database>,
+) -> Result<Option<String>, String> {
+    let config_key = format!("payment_{}_qrcode", payment_type);
+
+    let result: Option<String> = db.sqlite().query_row(
+        "SELECT value FROM app_configs WHERE key = ?1",
+        &[&config_key as &dyn rusqlite::ToSql],
+        |row| row.get(0),
+    ).ok().flatten();
+
+    Ok(result)
+}
+
+/// 获取收款码图片（Base64格式）
+#[tauri::command]
+pub async fn get_payment_qrcode_image(
+    payment_type: String,
+    db: State<'_, Database>,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+
+    // 获取收款码文件路径
+    let file_path = match get_payment_qrcode(payment_type, db).await? {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+
+    // 读取图片文件
+    let image_bytes = std::fs::read(&file_path)
+        .map_err(|e| format!("读取收款码图片失败: {}", e))?;
+
+    // 转换为Base64
+    let base64_string = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+
+    // 判断图片类型
+    let ext = std::path::Path::new(&file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+
+    Ok(Some(format!("data:image/{};base64,{}", ext, base64_string)))
 }

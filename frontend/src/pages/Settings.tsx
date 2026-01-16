@@ -30,6 +30,8 @@ import {
   ImportOutlined,
   ExclamationCircleOutlined,
   GlobalOutlined,
+  UploadOutlined,
+  QrcodeOutlined,
 } from '@ant-design/icons';
 import type { ColorPreset, SystemLog } from '@/types';
 import { SettingsApi, ColorPresetApi, SystemLogApi, FinancialApi, BackupApi, WebsiteApi, FileDialogApi } from '@/services/tauriApi';
@@ -62,6 +64,13 @@ export default function Settings() {
     pageSize: 20,
     total: 0,
   });
+
+  // ========== 收款码管理状态 ==========
+  const [paymentQrcodes, setPaymentQrcodes] = useState({
+    alipay: null as string | null,
+    wechat: null as string | null,
+  });
+  const [qrcodesLoading, setQrcodesLoading] = useState(false);
 
   // ========== 数据加载 ==========
   const loadConfigs = async () => {
@@ -156,11 +165,27 @@ export default function Settings() {
     }
   };
 
+  const loadPaymentQrcodes = async () => {
+    try {
+      setQrcodesLoading(true);
+      const [alipay, wechat] = await Promise.all([
+        SettingsApi.getPaymentQrcodeImage('alipay'),
+        SettingsApi.getPaymentQrcodeImage('wechat'),
+      ]);
+      setPaymentQrcodes({ alipay, wechat });
+    } catch (error) {
+      console.error('加载收款码失败:', error);
+    } finally {
+      setQrcodesLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadConfigs();
     loadColorPresets();
     loadLogs();
     loadLogStats();
+    loadPaymentQrcodes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -244,6 +269,28 @@ export default function Settings() {
       loadColorPresets();
     } catch (error) {
       message.error('删除失败: ' + error);
+    }
+  };
+
+  // ========== 收款码处理 ==========
+  const handleUploadQrcode = async (paymentType: 'alipay' | 'wechat') => {
+    try {
+      const title = paymentType === 'alipay' ? '选择支付宝收款码图片' : '选择微信收款码图片';
+      const filePath = await FileDialogApi.openFile({
+        title,
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      });
+
+      if (filePath) {
+        message.loading('正在上传收款码...', 0);
+        const savedPath = await SettingsApi.uploadPaymentQrcode(paymentType, filePath);
+        message.destroy();
+        message.success('收款码上传成功');
+        loadPaymentQrcodes();
+      }
+    } catch (error) {
+      message.destroy();
+      message.error('上传失败: ' + error);
     }
   };
 
@@ -827,6 +874,127 @@ export default function Settings() {
                         setPagination({ ...pagination, current: page, pageSize: pageSize || 20 }),
                     }}
                   />
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: 'payment',
+            label: '收款码设置',
+            children: (
+              <>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Card
+                      title={
+                        <Space>
+                          <QrcodeOutlined />
+                          支付宝收款码
+                        </Space>
+                      }
+                      extra={
+                        <Button
+                          icon={<UploadOutlined />}
+                          onClick={() => handleUploadQrcode('alipay')}
+                          loading={qrcodesLoading}
+                        >
+                          上传
+                        </Button>
+                      }
+                    >
+                      <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                        {paymentQrcodes.alipay ? (
+                          <img
+                            src={paymentQrcodes.alipay}
+                            alt="支付宝收款码"
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: 400,
+                              borderRadius: 8,
+                              border: '1px solid #d9d9d9',
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              padding: 60,
+                              border: '2px dashed #d9d9d9',
+                              borderRadius: 8,
+                              color: '#999',
+                            }}
+                          >
+                            <QrcodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
+                            <div>未上传支付宝收款码</div>
+                            <div style={{ fontSize: 12, marginTop: 8 }}>
+                              点击上方按钮上传
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col span={12}>
+                    <Card
+                      title={
+                        <Space>
+                          <QrcodeOutlined />
+                          微信收款码
+                        </Space>
+                      }
+                      extra={
+                        <Button
+                          icon={<UploadOutlined />}
+                          onClick={() => handleUploadQrcode('wechat')}
+                          loading={qrcodesLoading}
+                        >
+                          上传
+                        </Button>
+                      }
+                    >
+                      <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                        {paymentQrcodes.wechat ? (
+                          <img
+                            src={paymentQrcodes.wechat}
+                            alt="微信收款码"
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: 400,
+                              borderRadius: 8,
+                              border: '1px solid #d9d9d9',
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              padding: 60,
+                              border: '2px dashed #d9d9d9',
+                              borderRadius: 8,
+                              color: '#999',
+                            }}
+                          >
+                            <QrcodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
+                            <div>未上传微信收款码</div>
+                            <div style={{ fontSize: 12, marginTop: 8 }}>
+                              点击上方按钮上传
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Card
+                  title="使用说明"
+                  style={{ marginTop: 16 }}
+                  type="inner"
+                >
+                  <ol style={{ paddingLeft: 20, margin: 0 }}>
+                    <li>点击上方"上传"按钮选择收款码图片</li>
+                    <li>支持 PNG、JPG、JPEG、WEBP 格式</li>
+                    <li>上传后可在当天订单组件底部显示</li>
+                    <li>收款码保存在应用数据目录的 qrcodes 文件夹中</li>
+                  </ol>
                 </Card>
               </>
             ),
