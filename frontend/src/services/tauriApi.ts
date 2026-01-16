@@ -217,6 +217,27 @@ export const PatternApi = {
   async scanFolder(request: ScanFolderRequest): Promise<FolderScanResult> {
     return await safeInvoke<FolderScanResult>('scan_folder_for_patterns', { request });
   },
+
+  /**
+   * 保存图片缓存到磁盘
+   */
+  async saveImageCache(filePath: string, imageData: string): Promise<string> {
+    return await safeInvoke<string>('save_pattern_image_cache', { filePath, image_data: imageData });
+  },
+
+  /**
+   * 从磁盘加载图片缓存
+   */
+  async loadImageCache(filePath: string): Promise<string | null> {
+    return await safeInvoke<string | null>('load_pattern_image_cache', { filePath });
+  },
+
+  /**
+   * 清空所有图片缓存
+   */
+  async clearImageCache(): Promise<number> {
+    return await safeInvoke<number>('clear_pattern_image_cache');
+  },
 };
 
 // ============ 订单相关 ============
@@ -313,6 +334,14 @@ export const StatsApi = {
       startDate,
       endDate,
     });
+  },
+
+  /**
+   * 获取客户订单统计
+   * @param customerId 客户 ID
+   */
+  async getCustomerOrderStats(customerId: string): Promise<CustomerOrderStats> {
+    return await safeInvoke<CustomerOrderStats>('get_customer_order_stats', { customerId });
   },
 };
 
@@ -608,6 +637,43 @@ export const SettingsApi = {
    */
   async seedColorPresets(): Promise<ColorPreset[]> {
     return await safeInvoke<ColorPreset[]>('seed_color_presets');
+  },
+
+  /**
+   * 上传收款码
+   * @param paymentType 支付类型：'alipay'（支付宝）或 'wechat'（微信）
+   * @param filePath 图片文件路径
+   * @returns 保存后的文件路径
+   */
+  async uploadPaymentQrcode(paymentType: 'alipay' | 'wechat', filePath: string): Promise<string> {
+    return await safeInvoke<string>('upload_payment_qrcode', {
+      paymentType,
+      filePath,
+    });
+  },
+
+  /**
+   * 获取收款码路径
+   * @param paymentType 支付类型：'alipay'（支付宝）或 'wechat'（微信）
+   * @returns 收款码文件路径，如果不存在则返回 null
+   */
+  async getPaymentQrcode(paymentType: 'alipay' | 'wechat'): Promise<string | null> {
+    const result = await safeInvoke<string | null>('get_payment_qrcode', {
+      paymentType,
+    });
+    return result;
+  },
+
+  /**
+   * 获取收款码图片（Base64格式）
+   * @param paymentType 支付类型：'alipay'（支付宝）或 'wechat'（微信）
+   * @returns 收款码图片的Base64 Data URL，如果不存在则返回 null
+   */
+  async getPaymentQrcodeImage(paymentType: 'alipay' | 'wechat'): Promise<string | null> {
+    const result = await safeInvoke<string | null>('get_payment_qrcode_image', {
+      paymentType,
+    });
+    return result;
   },
 };
 

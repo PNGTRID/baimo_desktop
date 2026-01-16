@@ -71,7 +71,7 @@ interface ColorVariant {
 
 export default function Patterns({ onNavigate }: PatternsProps) {
   const { message } = App.useApp();
-  const { setPendingPatternForOrder, setPatternImage, getPatternImage } = useStore();
+  const { setPendingPatternForOrder, setPatternImage, getPatternImage, loadPatternImageCacheFromDisk } = useStore();
   // ========== 状态管理 ==========
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
@@ -271,6 +271,15 @@ export default function Patterns({ onNavigate }: PatternsProps) {
         })
       );
       setPatternColorCounts(colorCountMap);
+
+      // 预加载所有图片缓存到内存（避免重启后重新生成）
+      const filePaths = data
+        .map(p => p.localFilePath)
+        .filter((path): path is string => !!path);
+
+      if (filePaths.length > 0) {
+        await loadPatternImageCacheFromDisk(filePaths);
+      }
     } catch (error) {
       message.error('加载图案失败: ' + error);
     } finally {

@@ -3,8 +3,8 @@ use crate::models::{
     ScanFolderRequest, FolderScanResult, ScanError,
 };
 use crate::services::Database;
-use crate::commands::tiff::parse_tiff_file_sync;
-use tauri::State;
+use crate::commands::tiff::{parse_image_file, SUPPORTED_IMAGE_EXTENSIONS};
+use tauri::{State, Manager};
 use walkdir::WalkDir;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
@@ -330,10 +330,6 @@ pub async fn delete_pattern(
 // 注意：这是预览功能，使用快速采样生成 800px 预览图，不处理完整原图
 #[tauri::command]
 pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
-    use std::fs;
-    use std::io::Cursor;
-    use base64::{Engine as _, engine::general_purpose};
-
     eprintln!("[GET_PATTERN_IMAGE] 开始加载预览: path={}", file_path);
     let start_time = std::time::Instant::now();
 
@@ -354,25 +350,15 @@ pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
         return result;
     }
 
-    // 其他格式，尝试用 image crate 直接加载
-    let contents = fs::read(&file_path)
-        .map_err(|e| format!("无法读取图片文件: {}", e))?;
-
-    let img = image::load_from_memory_with_format(&contents, image::ImageFormat::Png)
-        .or_else(|_| image::load_from_memory_with_format(&contents, image::ImageFormat::Jpeg))
-        .map_err(|e| format!("无法识别的图片格式: {}", e))?;
-
-    // 转换为 RGB 并编码为 PNG
-    let rgb_img = img.to_rgb8();
-    let mut png_bytes = Vec::new();
-    let mut cursor = Cursor::new(&mut png_bytes);
-    rgb_img.write_to(&mut cursor, image::ImageFormat::Png)
-        .map_err(|e| format!("PNG 编码失败: {}", e))?;
-
-    let base64_string = general_purpose::STANDARD.encode(&png_bytes);
+    // 其他格式（PSD/JPG/PNG 等），使用 ImageMagick 快速转换
+    eprintln!("[GET_PATTERN_IMAGE] 检测到其他格式，使用ImageMagick转换({}px)", THUMBNAIL_PREVIEW_SIZE);
+    let result = convert_with_imagemagick_simple(&file_path, THUMBNAIL_PREVIEW_SIZE);
     let elapsed = start_time.elapsed();
-    eprintln!("[GET_PATTERN_IMAGE] 其他格式加载成功: 耗时={}ms, size={} bytes", elapsed.as_millis(), base64_string.len());
-    Ok(format!("data:image/png;base64,{}", base64_string))
+    match &result {
+        Ok(data) => eprintln!("[GET_PATTERN_IMAGE] 其他格式加载成功: 耗时={}ms", elapsed.as_millis()),
+        Err(e) => eprintln!("[GET_PATTERN_IMAGE] 其他格式加载失败: 耗时={}ms, error={}", elapsed.as_millis(), e),
+    }
+    result
 }
 
 // 辅助函数：将 TIFF 数据转换为 PNG
@@ -1360,6 +1346,11 @@ pub async fn scan_folder_for_patterns(
                 tiff_files.push(path.to_path_buf());
                 total_found += 1;
             }
+            // 支持更多图片格式：JPG, PNG, WebP, BMP, GIF
+            else if SUPPORTED_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+                tiff_files.push(path.to_path_buf());
+                total_found += 1;
+            }
         }
     }
 
@@ -1420,8 +1411,8 @@ async fn process_single_tiff(
         return Ok(ProcessResult::Skipped);
     }
 
-    // 解析 TIFF 元数据
-    let metadata = parse_tiff_file_sync(tiff_path)?;
+    // 解析图片元数据（支持多种格式）
+    let metadata = parse_image_file(tiff_path)?;
 
     // 获取或创建文件夹
     let folder_id = get_or_create_folder(
@@ -1684,6 +1675,7 @@ fn get_imagemagick_path() -> Option<(std::path::PathBuf, Option<std::path::PathB
 }
 
 /// 检查 ImageMagick 是否可用
+#[allow(dead_code)]
 fn check_imagemagick_available() -> bool {
     get_imagemagick_path().is_some()
 }
@@ -1778,4 +1770,113 @@ fn convert_tiff_with_imagemagick(tiff_data: &[u8]) -> Result<Vec<u8>, String> {
     }
 
     Ok(png_data)
+}
+
+// ============================================================
+// 图片缓存持久化命令
+// ============================================================
+
+/// 保存图片缓存到磁盘
+#[tauri::command]
+pub async fn save_pattern_image_cache(
+    file_path: String,
+    image_data: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    use std::fs;
+    use std::io::Write;
+
+    // 1. 获取应用数据目录
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    // 2. 创建缓存目录
+    let cache_dir = app_data_dir.join("image_cache");
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create cache dir: {}", e))?;
+
+    // 3. 生成缓存文件名（使用文件路径的 MD5 哈希）
+    let file_hash = format!("{:x}", md5::compute(file_path.as_bytes()));
+    let cache_path = cache_dir.join(format!("{}.png", file_hash));
+
+    // 4. 将 base64 数据解码并写入文件
+    use base64::Engine;
+    let image_bytes = base64::engine::general_purpose::STANDARD.decode(&image_data)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    let mut file = fs::File::create(&cache_path)
+        .map_err(|e| format!("Failed to create cache file: {}", e))?;
+
+    file.write_all(&image_bytes)
+        .map_err(|e| format!("Failed to write cache file: {}", e))?;
+
+    Ok(cache_path.to_string_lossy().to_string())
+}
+
+/// 从磁盘加载图片缓存
+#[tauri::command]
+pub async fn load_pattern_image_cache(
+    file_path: String,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    use std::fs;
+
+    // 1. 获取应用数据目录
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    // 2. 生成缓存文件路径
+    let file_hash = format!("{:x}", md5::compute(file_path.as_bytes()));
+    let cache_path = app_data_dir.join("image_cache").join(format!("{}.png", file_hash));
+
+    // 3. 检查缓存是否存在
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+
+    // 4. 读取缓存文件并转换为 base64
+    let image_bytes = fs::read(&cache_path)
+        .map_err(|e| format!("Failed to read cache file: {}", e))?;
+
+    use base64::Engine;
+    let base64_string = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+
+    Ok(Some(base64_string))
+}
+
+/// 清空所有图片缓存
+#[tauri::command]
+pub async fn clear_pattern_image_cache(
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
+    use std::fs;
+
+    // 1. 获取应用数据目录
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let cache_dir = app_data_dir.join("image_cache");
+
+    // 2. 如果缓存目录不存在，返回 0
+    if !cache_dir.exists() {
+        return Ok(0);
+    }
+
+    // 3. 删除缓存目录中的所有文件
+    let mut count = 0;
+    for entry in fs::read_dir(&cache_dir)
+        .map_err(|e| format!("Failed to read cache dir: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        // 只删除 .png 文件
+        if path.extension().and_then(|s| s.to_str()) == Some("png") {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete cache file: {}", e))?;
+            count += 1;
+        }
+    }
+
+    Ok(count)
 }

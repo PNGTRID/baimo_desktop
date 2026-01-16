@@ -26,11 +26,12 @@ interface AppState {
   pendingPatternForOrder: Pattern | null;
   setPendingPatternForOrder: (pattern: Pattern | null) => void;
   // 全局图片缓存（key: localFilePath, value: base64 image data）
-  // 不持久化到 localStorage，避免存储过大
+  // 不持久化到 localStorage，使用单独的文件缓存
   patternImageCache: Map<string, string>;
   setPatternImage: (filePath: string, imageData: string) => void;
   getPatternImage: (filePath: string) => string | undefined;
-  clearPatternImageCache: () => void;
+  clearPatternImageCache: () => Promise<void>;
+  loadPatternImageCacheFromDisk: (filePaths: string[]) => Promise<void>;
 }
 
 /**
@@ -68,22 +69,82 @@ export const useStore = create<AppState>()(
       setPendingPatternForOrder: (pattern) =>
         set({ pendingPatternForOrder: pattern }),
 
-      // 设置图片缓存
-      setPatternImage: (filePath, imageData) =>
+      // 设置图片缓存（同时保存到磁盘）
+      setPatternImage: (filePath, imageData) => {
+        // 更新内存缓存
         set((state) => {
           const newCache = new Map(state.patternImageCache);
           newCache.set(filePath, imageData);
           return { patternImageCache: newCache };
-        }),
+        });
+
+        // 异步保存到磁盘（不阻塞 UI）
+        (async () => {
+          try {
+            const { PatternApi } = await import('@/services/tauriApi');
+            await PatternApi.saveImageCache(filePath, imageData);
+          } catch (error) {
+            console.error('保存图片缓存失败:', error);
+          }
+        })();
+      },
 
       // 获取图片缓存
       getPatternImage: (filePath) => {
         return get().patternImageCache.get(filePath);
       },
 
-      // 清空图片缓存
-      clearPatternImageCache: () =>
-        set({ patternImageCache: new Map() }),
+      // 清空图片缓存（同时清理磁盘缓存）
+      clearPatternImageCache: async () => {
+        set({ patternImageCache: new Map() });
+
+        try {
+          const { PatternApi } = await import('@/services/tauriApi');
+          const count = await PatternApi.clearImageCache();
+          console.log(`已清理 ${count} 个图片缓存文件`);
+        } catch (error) {
+          console.error('清理图片缓存失败:', error);
+        }
+      },
+
+      // 从磁盘加载图片缓存
+      loadPatternImageCacheFromDisk: async (filePaths: string[]) => {
+        try {
+          const { PatternApi } = await import('@/services/tauriApi');
+
+          // 并行加载所有缓存
+          const cacheEntries = await Promise.all(
+            filePaths.map(async (filePath) => {
+              try {
+                const cached = await PatternApi.loadImageCache(filePath);
+                if (cached) {
+                  return [filePath, cached] as [string, string];
+                }
+              } catch (error) {
+                // 忽略单个文件加载失败
+                console.debug(`加载缓存失败: ${filePath}`, error);
+              }
+              return null;
+            })
+          );
+
+          // 过滤掉 null 值并更新缓存
+          const validEntries = cacheEntries.filter((e): e is [string, string] => e !== null);
+
+          if (validEntries.length > 0) {
+            set((state) => {
+              const newCache = new Map(state.patternImageCache);
+              validEntries.forEach(([filePath, imageData]) => {
+                newCache.set(filePath, imageData);
+              });
+              return { patternImageCache: newCache };
+            });
+            console.log(`已从磁盘加载 ${validEntries.length} 个图片缓存`);
+          }
+        } catch (error) {
+          console.error('加载图片缓存失败:', error);
+        }
+      },
 
       // 从后端加载配置
       loadConfig: async () => {
