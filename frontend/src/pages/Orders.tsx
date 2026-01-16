@@ -8,9 +8,6 @@ import {
   Typography,
   Space,
   Popconfirm,
-  Row,
-  Col,
-  Statistic,
   Image,
   Upload,
   Divider,
@@ -22,7 +19,7 @@ import {
   DeleteOutlined,
   CameraOutlined,
   PictureOutlined,
-  SearchOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import type { Order, OrderPatternItem, Customer, Pattern } from '@/types';
 import { OrderApi, CustomerApi } from '@/services/tauriApi';
@@ -30,23 +27,18 @@ import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
 import OrderEditModal from '@/components/order/OrderEditModal';
 import AddOrderItemModal from '@/components/order/AddOrderItemModal';
+import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
 import { useStore } from '@/store/useStore';
 
 const { Text } = Typography;
-
-interface DailySummary {
-  totalOrders: number;
-  totalAmount: number;
-  completedOrders: number;
-  pendingOrders: number;
-}
 
 const orderColumns = (
   onEdit: (order: Order) => void,
   onDelete: (id: string) => void,
   onConfirm: (id: string) => void,
   onViewScreenshot: (order: Order) => void,
+  onShowDailyOrders: (customerId: string) => void,
 ) => [
   { title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150 },
   { title: '客户名称', dataIndex: 'customerName', key: 'customerName', width: 150 },
@@ -86,9 +78,17 @@ const orderColumns = (
   {
     title: '操作',
     key: 'action',
-    width: 250,
+    width: 320,
     render: (_: unknown, record: Order) => (
       <Space size="small">
+        <Button
+          size="small"
+          icon={<CalendarOutlined />}
+          onClick={() => onShowDailyOrders(record.customerId)}
+          title="查看客户当天订单"
+        >
+          当天订单
+        </Button>
         {!record.isConfirmed && (
           <Popconfirm
             title="确认并生产"
@@ -116,12 +116,19 @@ const orderColumns = (
         />
         <Popconfirm
           title="确认删除订单"
-          description="删除后无法恢复，确定要删除这个订单吗？"
+          description={record.isConfirmed ? "已确认的订单不能删除" : "删除后无法恢复，确定要删除这个订单吗？"}
           onConfirm={() => onDelete(record.id)}
           okText="确定"
           cancelText="取消"
+          disabled={record.isConfirmed}
         >
-          <Button type="text" danger icon={<DeleteOutlined />} title="删除" />
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            title="删除"
+            disabled={record.isConfirmed}
+          />
         </Popconfirm>
       </Space>
     ),
@@ -197,14 +204,6 @@ export default function Orders() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 批量选中的订单 ID
   const [addItemModalVisible, setAddItemModalVisible] = useState(false); // 添加订单项模态框
 
-  // 统计数据状态
-  const [dailySummary, setDailySummary] = useState<DailySummary>({
-    totalOrders: 0,
-    totalAmount: 0,
-    completedOrders: 0,
-    pendingOrders: 0,
-  });
-
   // 截图相关状态
   const [screenshotModalVisible, setScreenshotModalVisible] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
@@ -217,26 +216,10 @@ export default function Orders() {
   // 预选图案（用于快捷下单）
   const [pendingPattern, setPendingPattern] = useState<Pattern | null>(null);
 
-  // 计算当天订单汇总
-  const calculateDailySummary = (orderList: Order[]): DailySummary => {
-    const todayOrders = orderList.filter((order) => {
-      const orderDate = dayjs(order.createdAt);
-      return orderDate.isSame(dayjs(), 'day');
-    });
-
-    // 只统计已确认的订单（确认并生产后会计入账单）
-    const confirmedOrders = todayOrders.filter((o) => o.isConfirmed);
-    const totalAmount = confirmedOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-    const completedOrders = confirmedOrders.length;
-    const pendingOrders = todayOrders.filter((o) => !o.isConfirmed).length;
-
-    return {
-      totalOrders: todayOrders.length,
-      totalAmount,
-      completedOrders,
-      pendingOrders,
-    };
-  };
+  // 当天订单弹窗状态
+  const [dailyOrdersVisible, setDailyOrdersVisible] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>();
+  const [selectedDate, setSelectedDate] = useState<string | undefined>();
 
   // 加载订单列表
   const loadOrders = async () => {
@@ -250,10 +233,6 @@ export default function Orders() {
       console.log('[订单刷新] 获取到订单数据:', data.length, '条');
       setOrders(data);
       setCustomers(customersData.filter((c) => c.isActive));
-
-      // 计算当天汇总
-      const summary = calculateDailySummary(data);
-      setDailySummary(summary);
       console.log('[订单刷新] 订单列表更新完成');
     } catch (error) {
       console.error('[订单刷新] 加载失败:', error);
@@ -334,10 +313,6 @@ export default function Orders() {
       const updatedOrder = await OrderApi.confirm(id);
       setOrders(orders.map((o) => (o.id === id ? updatedOrder : o)));
       message.success('订单已确认并生产');
-
-      // 重新计算当天汇总
-      const summary = calculateDailySummary(orders.map((o) => (o.id === id ? updatedOrder : o)));
-      setDailySummary(summary);
     } catch (error) {
       message.error('确认失败');
       console.error(error);
@@ -371,6 +346,13 @@ export default function Orders() {
     setScreenshotModalVisible(true);
   };
 
+  // 显示客户当天订单
+  const handleShowDailyOrders = (customerId: string, date?: string) => {
+    setSelectedCustomerId(customerId);
+    setSelectedDate(date);
+    setDailyOrdersVisible(true);
+  };
+
   // 截图上传处理
   const handleScreenshotChange: UploadProps['onChange'] = (info) => {
     setScreenshotFiles(info.fileList);
@@ -387,54 +369,6 @@ export default function Orders() {
           管理客户订单、跟踪订单状态和生产进度
         </p>
       </div>
-
-      {/* 当天订单汇总卡片 */}
-      <Card
-        className="stat-card"
-        title={
-          <Space>
-            <SearchOutlined style={{ color: '#0ea5e9' }} />
-            <span style={{ fontSize: 15, fontWeight: 600 }}>当天订单汇总</span>
-            <Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
-              ({dayjs().format('YYYY-MM-DD')})
-            </Text>
-          </Space>
-        }
-        style={{ marginBottom: 16 }}
-      >
-        <Row gutter={16}>
-          <Col span={6}>
-            <Statistic
-              title="总订单数"
-              value={dailySummary.totalOrders}
-              styles={{ content: { color: '#0ea5e9', fontWeight: 600 } }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="总金额"
-              value={dailySummary.totalAmount}
-              precision={2}
-              prefix="¥"
-              styles={{ content: { color: '#52c41a', fontWeight: 600 } }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="已完成"
-              value={dailySummary.completedOrders}
-              styles={{ content: { color: '#52c41a', fontWeight: 600 } }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="进行中"
-              value={dailySummary.pendingOrders}
-              styles={{ content: { color: '#faad14', fontWeight: 600 } }}
-            />
-          </Col>
-        </Row>
-      </Card>
 
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space>
@@ -464,7 +398,7 @@ export default function Orders() {
 
       <Table
         dataSource={orders}
-        columns={orderColumns(handleEdit, handleDelete, handleConfirm, handleViewScreenshot)}
+        columns={orderColumns(handleEdit, handleDelete, handleConfirm, handleViewScreenshot, handleShowDailyOrders)}
         rowKey="id"
         loading={loading}
         rowSelection={{
@@ -585,6 +519,16 @@ export default function Orders() {
           setPendingPattern(null);
         }}
       />
+
+      {/* 客户当天订单弹窗 */}
+      {selectedCustomerId && (
+        <CustomerDailyOrdersModal
+          visible={dailyOrdersVisible}
+          customerId={selectedCustomerId}
+          onCancel={() => setDailyOrdersVisible(false)}
+          date={selectedDate}
+        />
+      )}
     </div>
   );
 }

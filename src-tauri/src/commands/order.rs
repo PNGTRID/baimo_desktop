@@ -540,35 +540,56 @@ pub async fn delete_order(
     id: String,
     db: State<'_, Database>,
 ) -> Result<bool, String> {
-    // 先获取订单信息用于日志
+    // 1. 检查订单是否存在并获取订单信息
     let order_info = db.sqlite().query_row(
-        "SELECT o.customer_id, c.name, o.total_amount
+        "SELECT o.is_confirmed, o.customer_id, c.name, o.total_amount
          FROM orders o LEFT JOIN customers c ON o.customer_id = c.id
          WHERE o.id = ?1",
         &[&id as &dyn rusqlite::ToSql],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, f64>(2)?)),
-    ).ok().flatten();
+        |row| Ok((
+            row.get::<_, bool>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, f64>(3)?,
+        )),
+    ).map_err(|e| format!("Failed to fetch order: {:?}", e))?
+    .ok_or_else(|| "Order not found".to_string())?;
 
-    db.sqlite().execute(
-        "DELETE FROM orders WHERE id = ?1",
-        &[&id as &dyn rusqlite::ToSql],
-    ).map_err(|e| format!("Failed to delete order: {:?}", e))?;
+    let (is_confirmed, customer_id, customer_name, total_amount) = order_info;
 
-    // 记录日志
-    if let Some((customer_id, customer_name, amount)) = order_info {
-        use crate::commands::settings::create_system_log;
-        use crate::models::CreateSystemLogRequest;
-        let _ = create_system_log(CreateSystemLogRequest {
-            level: "WARNING".to_string(),
-            message: format!("删除订单: {}", id),
-            metadata: Some(serde_json::json!({
-                "order_id": id,
-                "customer_id": customer_id,
-                "customer_name": customer_name,
-                "amount": amount,
-            }).to_string()),
-        }, db.clone()).await;
+    // 2. 已确认订单不能删除
+    if is_confirmed {
+        return Err("已确认的订单不能删除，请先取消确认".to_string());
     }
+
+    // 3. 使用事务删除订单项和订单
+    db.sqlite().transaction(|tx| {
+        // 删除订单项
+        tx.execute(
+            "DELETE FROM order_pattern_items WHERE order_id = ?1",
+            &[&id as &dyn rusqlite::ToSql],
+        )?;
+        // 删除订单
+        tx.execute(
+            "DELETE FROM orders WHERE id = ?1",
+            &[&id as &dyn rusqlite::ToSql],
+        )?;
+        Ok::<_, rusqlite::Error>(())
+    }).map_err(|e| format!("Failed to delete order: {:?}", e))?;
+
+    // 4. 记录日志
+    use crate::commands::settings::create_system_log;
+    use crate::models::CreateSystemLogRequest;
+    let _ = create_system_log(CreateSystemLogRequest {
+        level: "WARNING".to_string(),
+        message: format!("删除订单: {}", id),
+        metadata: Some(serde_json::json!({
+            "order_id": id,
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+            "amount": total_amount,
+        }).to_string()),
+    }, db.clone()).await;
 
     Ok(true)
 }
