@@ -544,15 +544,15 @@ export default function Patterns({ onNavigate }: PatternsProps) {
     }
   };
 
-  // 从 TIFF 文件创建
-  const handleSelectTiff = async () => {
+  // 从图片文件创建（支持多种格式）
+  const handleSelectImage = async () => {
     try {
       const selected = await FileDialogApi.openFile({
-        title: '选择 TIFF 文件',
+        title: '选择图片文件',
         filters: [
           {
-            name: 'TIFF Files',
-            extensions: ['tif', 'tiff'],
+            name: '图片文件',
+            extensions: ['tif', 'tiff', 'jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'psd'],
           },
         ],
       });
@@ -560,9 +560,9 @@ export default function Patterns({ onNavigate }: PatternsProps) {
       if (!selected) return;
 
       setLoading(true);
-      message.loading('正在解析 TIFF 文件...', 0);
+      message.loading('正在解析图片文件...', 0);
 
-      // 解析 TIFF 文件
+      // 解析图片文件（支持多种格式）
       const metadata = await TiffApi.parseTiff(selected);
       message.destroy();
 
@@ -580,9 +580,9 @@ export default function Patterns({ onNavigate }: PatternsProps) {
         }
       }
 
-      // 从 TIFF 创建图案（快速创建，不生成缩略图）
+      // 从图片文件创建图案（快速创建，不生成缩略图）
       const newPattern = await PatternApi.createFromTiff({
-        name: metadata.fileName.replace(/\.tiff?$/i, ''),
+        name: metadata.fileName.replace(/\.(tif|tiff|jpg|jpeg|png|webp|bmp|gif|psd)$/i, ''),
         localFilePath: metadata.filePath,
         actualHeight: Math.round(metadata.heightCm * 10) / 10,
         customerId: getSelectedCustomerId(),
@@ -1385,10 +1385,10 @@ export default function Patterns({ onNavigate }: PatternsProps) {
                 <Button
                   type="primary"
                   icon={<FileImageOutlined />}
-                  onClick={handleSelectTiff}
+                  onClick={handleSelectImage}
                   loading={loading}
                 >
-                  从 TIFF 创建
+                  从图片创建
                 </Button>
                 <Button
                   icon={<FolderOpenOutlined />}
