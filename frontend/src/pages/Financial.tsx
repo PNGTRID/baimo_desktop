@@ -418,8 +418,180 @@ export default function Financial() {
 
       {/* 内容区域 */}
       <Tabs
-        defaultActiveKey="records"
+        defaultActiveKey="debts"
         items={[
+          {
+            key: 'debts',
+            label: '客户欠款',
+            children: (
+              <>
+                <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                  <Button icon={<ReloadOutlined />} onClick={() => { loadCustomerDebts(); loadStats(); }}>
+                    刷新
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<CopyOutlined />}
+                    onClick={handleCopyOverview}
+                    loading={copying}
+                  >
+                    复制概览
+                  </Button>
+                </div>
+
+                <div id="financial-overview" style={{ padding: '20px', backgroundColor: '#fff' }}>
+                  {/* 统计卡片区域 */}
+                  <Row gutter={16} style={{ marginBottom: 16 }}>
+                    {/* 公司总余额 */}
+                    <Col span={6}>
+                      <Card bordered={false} style={{ backgroundColor: '#f5f5f5', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 8 }}>💰 公司总余额</div>
+                          <div style={{ fontSize: 32, fontWeight: 700, color: companyFinancial?.totalBalance && companyFinancial.totalBalance >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                            {companyFinancial ? `¥${companyFinancial.totalBalance.toFixed(2)}` : '-'}
+                          </div>
+                        </div>
+                      </Card>
+                    </Col>
+
+                    {/* 今日统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📅 今日统计</div>
+                        <Row gutter={[8, 8]}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={todayStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 14, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={todayStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 14, color: '#52c41a' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="个数"
+                              value={todayStats?.totalQuantity || 0}
+                              valueStyle={{ fontSize: 14, color: '#faad14' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="订单"
+                              value={todayStats?.orderCount || 0}
+                              valueStyle={{ fontSize: 14, color: '#722ed1' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    {/* 本月统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📆 本月统计</div>
+                        <Row gutter={[8, 8]}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={monthStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 14, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={monthStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 14, color: '#52c41a' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="个数"
+                              value={monthStats?.totalQuantity || 0}
+                              valueStyle={{ fontSize: 14, color: '#faad14' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="订单"
+                              value={monthStats?.orderCount || 0}
+                              valueStyle={{ fontSize: 14, color: '#722ed1' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+
+                    {/* 今年统计 */}
+                    <Col span={6}>
+                      <Card size="small" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>🗓️ 今年统计</div>
+                        <Row gutter={[8, 8]}>
+                          <Col span={12}>
+                            <Statistic
+                              title="面积"
+                              value={yearStats?.totalArea || 0}
+                              precision={2}
+                              valueStyle={{ fontSize: 14, color: '#1890ff' }}
+                              suffix="m²"
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="收入"
+                              value={yearStats?.totalRevenue || 0}
+                              precision={2}
+                              prefix="¥"
+                              valueStyle={{ fontSize: 14, color: '#52c41a' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="个数"
+                              value={yearStats?.totalQuantity || 0}
+                              valueStyle={{ fontSize: 14, color: '#faad14' }}
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Statistic
+                              title="订单"
+                              value={yearStats?.orderCount || 0}
+                              valueStyle={{ fontSize: 14, color: '#722ed1' }}
+                            />
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  {/* 客户欠款表格 */}
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📋 客户欠款明细</div>
+                    <Table
+                      dataSource={customerDebts}
+                      columns={debtColumns}
+                      rowKey="id"
+                      pagination={false}
+                    />
+                  </div>
+                </div>
+              </>
+            ),
+          },
           {
             key: 'records',
             label: '财务记录',
@@ -491,136 +663,6 @@ export default function Financial() {
                       setPagination({ ...pagination, current: page, pageSize: pageSize || 20 }),
                   }}
                 />
-              </>
-            ),
-          },
-          {
-            key: 'debts',
-            label: '客户欠款',
-            children: (
-              <>
-                <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-                  <Button icon={<ReloadOutlined />} onClick={() => { loadCustomerDebts(); loadStats(); }}>
-                    刷新
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<CopyOutlined />}
-                    onClick={handleCopyOverview}
-                    loading={copying}
-                  >
-                    复制概览
-                  </Button>
-                </div>
-
-                <div id="financial-overview" style={{ padding: '20px', backgroundColor: '#fff' }}>
-                  {/* 统计卡片区域 */}
-                  <Row gutter={16} style={{ marginBottom: 16 }}>
-                    {/* 公司总余额 */}
-                    <Col span={6}>
-                      <Card bordered={false} style={{ backgroundColor: '#f5f5f5', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 8 }}>💰 公司总余额</div>
-                          <div style={{ fontSize: 32, fontWeight: 700, color: companyFinancial?.totalBalance && companyFinancial.totalBalance >= 0 ? '#52c41a' : '#ff4d4f' }}>
-                            {companyFinancial ? `¥${companyFinancial.totalBalance.toFixed(2)}` : '-'}
-                          </div>
-                        </div>
-                      </Card>
-                    </Col>
-
-                    {/* 今日统计 */}
-                    <Col span={6}>
-                      <Card size="small" style={{ height: '100%' }}>
-                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📅 今日统计</div>
-                        <Row gutter={8}>
-                          <Col span={12}>
-                            <Statistic
-                              title="面积"
-                              value={todayStats?.totalArea || 0}
-                              precision={2}
-                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
-                              suffix="m²"
-                            />
-                          </Col>
-                          <Col span={12}>
-                            <Statistic
-                              title="收入"
-                              value={todayStats?.totalRevenue || 0}
-                              precision={2}
-                              prefix="¥"
-                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
-                            />
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-
-                    {/* 本月统计 */}
-                    <Col span={6}>
-                      <Card size="small" style={{ height: '100%' }}>
-                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>📆 本月统计</div>
-                        <Row gutter={8}>
-                          <Col span={12}>
-                            <Statistic
-                              title="面积"
-                              value={monthStats?.totalArea || 0}
-                              precision={2}
-                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
-                              suffix="m²"
-                            />
-                          </Col>
-                          <Col span={12}>
-                            <Statistic
-                              title="收入"
-                              value={monthStats?.totalRevenue || 0}
-                              precision={2}
-                              prefix="¥"
-                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
-                            />
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-
-                    {/* 今年统计 */}
-                    <Col span={6}>
-                      <Card size="small" style={{ height: '100%' }}>
-                        <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 8, textAlign: 'center' }}>🗓️ 今年统计</div>
-                        <Row gutter={8}>
-                          <Col span={12}>
-                            <Statistic
-                              title="面积"
-                              value={yearStats?.totalArea || 0}
-                              precision={2}
-                              valueStyle={{ fontSize: 18, color: '#1890ff' }}
-                              suffix="m²"
-                            />
-                          </Col>
-                          <Col span={12}>
-                            <Statistic
-                              title="收入"
-                              value={yearStats?.totalRevenue || 0}
-                              precision={2}
-                              prefix="¥"
-                              valueStyle={{ fontSize: 18, color: '#52c41a' }}
-                            />
-                          </Col>
-                        </Row>
-                      </Card>
-                    </Col>
-                  </Row>
-
-                  {/* 客户欠款表格 */}
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>📋 客户欠款明细</div>
-                    <Table
-                      dataSource={customerDebts}
-                      columns={debtColumns}
-                      rowKey="id"
-                      pagination={false}
-                    />
-                  </div>
-                </div>
               </>
             ),
           },
