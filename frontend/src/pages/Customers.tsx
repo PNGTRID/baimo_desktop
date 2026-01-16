@@ -10,6 +10,7 @@ import {
   Tag,
   Space,
   Popconfirm,
+  Dropdown,
 } from 'antd';
 import {
   PlusOutlined,
@@ -17,6 +18,7 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   CalendarOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import type { Customer } from '@/types';
 import { CustomerApi } from '@/services/tauriApi';
@@ -34,6 +36,7 @@ export default function Customers() {
   // 当天订单弹窗状态
   const [dailyOrdersVisible, setDailyOrdersVisible] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>();
+  const [selectedDate, setSelectedDate] = useState<string | undefined>();
 
   // 加载客户列表
   const loadCustomers = async () => {
@@ -116,9 +119,10 @@ export default function Customers() {
     }
   };
 
-  // 显示客户当天订单
-  const handleShowDailyOrders = (customerId: string) => {
+  // 显示客户订单（指定日期）
+  const handleShowDailyOrders = (customerId: string, date?: string) => {
     setSelectedCustomerId(customerId);
+    setSelectedDate(date);
     setDailyOrdersVisible(true);
   };
 
@@ -128,13 +132,13 @@ export default function Customers() {
       title: '客户名称',
       dataIndex: 'name',
       key: 'name',
-      width: 150,
+      width: 120,
     },
     {
-      title: '余额（元）',
+      title: '余额',
       dataIndex: 'balance',
       key: 'balance',
-      width: 120,
+      width: 100,
       render: (value: number) => (
         <span style={{
           color: value < 0 ? '#ff4d4f' : '#52c41a',
@@ -148,21 +152,21 @@ export default function Customers() {
       title: '信用额度',
       dataIndex: 'creditLimit',
       key: 'creditLimit',
-      width: 120,
+      width: 100,
       render: (value: number) => `¥${value.toFixed(2)}`,
     },
     {
-      title: '每平方单价',
+      title: '单价',
       dataIndex: 'unitPrice',
       key: 'unitPrice',
-      width: 120,
+      width: 90,
       render: (value: number) => `¥${value.toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'isActive',
       key: 'isActive',
-      width: 80,
+      width: 70,
       render: (isActive: boolean) =>
         isActive ? (
           <Tag color="success">启用</Tag>
@@ -171,33 +175,52 @@ export default function Customers() {
         ),
     },
     {
-      title: '备注',
-      dataIndex: 'notes',
-      key: 'notes',
-      ellipsis: true,
-    },
-    {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 180,
+      width: 150,
       render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm'),
     },
     {
       title: '操作',
       key: 'action',
-      width: 280,
-      fixed: 'right' as const,
+      width: 210,
       render: (_: unknown, record: Customer) => (
         <Space size="small">
           <Button
-            type="link"
+            type="primary"
             size="small"
             icon={<CalendarOutlined />}
-            onClick={() => handleShowDailyOrders(record.id)}
+            onClick={() => handleShowDailyOrders(record.id, dayjs().format('YYYY-MM-DD'))}
           >
             当天订单
           </Button>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'yesterday',
+                  label: '昨天',
+                  onClick: () => handleShowDailyOrders(record.id, dayjs().subtract(1, 'day').format('YYYY-MM-DD')),
+                },
+                {
+                  key: '7days',
+                  label: '近7天',
+                  onClick: () => handleShowDailyOrders(record.id, dayjs().format('YYYY-MM-DD')),
+                },
+                {
+                  key: '30days',
+                  label: '近30天',
+                  onClick: () => handleShowDailyOrders(record.id, dayjs().format('YYYY-MM-DD')),
+                },
+              ],
+            }}
+            trigger={['click']}
+          >
+            <Button type="link" size="small" icon={<CalendarOutlined />} suffix={<DownOutlined />}>
+              历史查询
+            </Button>
+          </Dropdown>
           <Button
             type="link"
             size="small"
@@ -260,7 +283,6 @@ export default function Customers() {
         rowKey="id"
         loading={loading}
         locale={{ emptyText: '暂无客户数据' }}
-        scroll={{ x: 1300 }}
         pagination={{
           pageSize: 20,
           showSizeChanger: true,
@@ -333,6 +355,7 @@ export default function Customers() {
           visible={dailyOrdersVisible}
           customerId={selectedCustomerId}
           onCancel={() => setDailyOrdersVisible(false)}
+          date={selectedDate}
         />
       )}
     </div>
