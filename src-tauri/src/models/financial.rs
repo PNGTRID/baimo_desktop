@@ -63,6 +63,7 @@ pub struct ProductionStats {
     pub total_area: f64,
     pub total_revenue: f64,
     pub order_count: i32,
+    pub total_quantity: i32, // 合计个数（订单项数量总和）
     pub avg_price: f64,
     pub daily_breakdown: Vec<DailyStats>,
 }

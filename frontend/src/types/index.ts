@@ -202,6 +202,7 @@ export interface ProductionStats {
   totalArea: number;
   totalRevenue: number;
   orderCount: number;
+  totalQuantity: number; // 合计个数（订单项数量总和）
   avgPrice: number;
   dailyBreakdown: DailyStats[];
 }
@@ -328,6 +329,17 @@ export interface CustomerDebt {
   availableCredit: number;
   debtRatio: number;
   notes?: string;
+  // 新增：订单统计
+  orderCount?: number;
+  totalArea?: number;
+  totalQuantity?: number;
+}
+
+/// 客户订单统计
+export interface CustomerOrderStats {
+  totalArea: number;
+  totalQuantity: number;
+  orderCount: number;
 }
 
 export interface FinancialRecordParams {

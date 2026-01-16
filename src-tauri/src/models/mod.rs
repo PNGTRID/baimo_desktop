@@ -182,6 +182,15 @@ pub struct DashboardStats {
     pub monthly_revenue: f64,
 }
 
+/// 客户订单统计（用于客户欠款页面）
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerOrderStats {
+    pub total_area: f64,
+    pub total_quantity: i32,
+    pub order_count: i32,
+}
+
 // ============================================================
 // 新增模块导出 - 数据模型
 // ============================================================

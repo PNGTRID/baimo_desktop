@@ -2,7 +2,7 @@
 // Stats - Dashboard 统计命令
 // ============================================================
 
-use crate::models::{DashboardStats, CompanyFinancialOverview, ProductionStats, DailyStats};
+use crate::models::{DashboardStats, CompanyFinancialOverview, ProductionStats, DailyStats, CustomerOrderStats};
 use crate::services::Database;
 use tauri::State;
 use chrono::Datelike;
@@ -145,8 +145,9 @@ pub async fn get_production_stats(
     };
 
     // 获取统计数据
-    // 当 area 为 0 或 NULL 时，使用印花行业公式计算：平方数 = 数量 / (160 / (actualHeight + bleedHeight) * unitsPerRow)
-    // 其中 160cm 是 1平方米的边长基准
+    // 面积计算：当 area 为 0 或 NULL 时，使用印花行业公式计算：平方数 = 数量 / (160 / (actualHeight + bleedHeight) * unitsPerRow)
+    // 个数计算：按数量下单直接累加，按面积下单需要转换：个数 = ROUND(面积 * (1600 / 总高度mm * 每行个数))
+    // 其中 160cm 是 1平方米的边长基准，1600mm 是 1平方米的边长基准
     let stats = db.sqlite().query_row(
         "SELECT
             COALESCE(SUM(
@@ -156,7 +157,15 @@ pub async fn get_production_stats(
                 END
             ), 0) as total_area,
             COALESCE(SUM(opi.total_price), 0) as total_revenue,
-            COUNT(DISTINCT opi.order_id) as order_count
+            COUNT(DISTINCT opi.order_id) as order_count,
+            COALESCE(CAST(SUM(
+                CASE
+                    WHEN opi.pricing_mode = 'QUANTITY' THEN opi.quantity
+                    WHEN opi.pricing_mode = 'AREA' AND opi.area > 0 AND (p.actual_height + p.bleed_height) > 0 AND p.units_per_row > 0
+                        THEN ROUND(opi.area * (1600.0 / ((p.actual_height + p.bleed_height) * 10.0) * p.units_per_row))
+                    ELSE 0
+                END
+            ) AS INTEGER), 0) as total_quantity
          FROM order_pattern_items opi
          JOIN orders o ON opi.order_id = o.id
          JOIN patterns p ON opi.pattern_id = p.id
@@ -167,6 +176,7 @@ pub async fn get_production_stats(
                 total_area: row.get(0)?,
                 total_revenue: row.get(1)?,
                 order_count: row.get(2)?,
+                total_quantity: row.get(3)?,
                 avg_price: 0.0,
                 daily_breakdown: vec![],
             })
@@ -215,4 +225,32 @@ pub async fn get_production_stats(
         daily_breakdown,
         ..stats
     })
+}
+
+/// 获取客户订单统计（用于客户欠款页面）
+#[tauri::command]
+pub async fn get_customer_order_stats(
+    customer_id: String,
+    db: State<'_, Database>,
+) -> Result<CustomerOrderStats, String> {
+    let stats = db.sqlite().query_row(
+        "SELECT
+            COALESCE(SUM(CASE WHEN opi.pricing_mode = 'AREA' THEN opi.area ELSE 0 END), 0) as total_area,
+            COALESCE(SUM(opi.quantity), 0) as total_quantity,
+            COUNT(DISTINCT o.id) as order_count
+         FROM orders o
+         INNER JOIN order_pattern_items opi ON o.id = opi.order_id
+         WHERE o.customer_id = ?1 AND o.is_confirmed = 1",
+        &[&customer_id as &dyn rusqlite::ToSql],
+        |row| {
+            Ok(CustomerOrderStats {
+                total_area: row.get(0)?,
+                total_quantity: row.get(1)?,
+                order_count: row.get(2)?,
+            })
+        },
+    ).map_err(|e| format!("Failed to fetch customer order stats: {:?}", e))?
+    .ok_or_else(|| "No customer order stats found".to_string())?;
+
+    Ok(stats)
 }
