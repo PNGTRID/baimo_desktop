@@ -21,12 +21,12 @@ model Customer {
   phone        String?
   address      String?
   balance      Float    @default(0)        // 余额
-  creditLimit  Float    @default(0)        // 信用额度
-  unitPrice    Float    @default(0)        // 单价（每平方单价，用于价格计算）
-  notes        String?                     // 备注信息
-  isActive     Boolean  @default(true)     // 是否激活
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  creditLimit  Float    @default(0)        @map("credit_limit")  // 信用额度
+  unitPrice    Float    @default(0)        @map("unit_price")    // 单价（每平方单价，用于价格计算）
+  notes        String?                                      // 备注信息
+  isActive     Boolean  @default(true)     @map("is_active")   // 是否激活
+  createdAt    DateTime @default(now())    @map("created_at")
+  updatedAt    DateTime @updatedAt         @map("updated_at")
 
   // 关联：一个客户可以有多个订单
   orders            Order[]             @relation("CustomerOrders")
@@ -49,9 +49,9 @@ model Product {
   id        String   @id @default(uuid())
   name      String   @unique
   price     Float
-  unit      String   // 单位，如：个、件、箱
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  unit      String                            // 单位，如：个、件、箱
+  createdAt DateTime @default(now())          @map("created_at")
+  updatedAt DateTime @updatedAt               @map("updated_at")
 
   // 关联：一个产品可以在多个订单项中
   orderItems OrderItem[]
@@ -64,14 +64,14 @@ model Product {
 // ============================================================
 model Order {
   id             String    @id @default(uuid())
-  customerId     String
-  orderDate      DateTime  @default(now())
-  totalAmount    Float
-  isConfirmed    Boolean   @default(false) @map("is_confirmed") // 是否已确认并生产
-  confirmedAt    DateTime? @map("confirmed_at") // 确认并生产时间
+  customerId     String                         @map("customer_id")
+  orderDate      DateTime  @default(now())       @map("order_date")
+  totalAmount    Float                           @map("total_amount")
+  isConfirmed    Boolean   @default(false)       @map("is_confirmed") // 是否已确认并生产
+  confirmedAt    DateTime?                       @map("confirmed_at") // 确认并生产时间
   notes          String?
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  createdAt      DateTime  @default(now())       @map("created_at")
+  updatedAt      DateTime  @updatedAt            @map("updated_at")
 
   // 关联：一个订单属于一个客户
   customer       Customer  @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Cascade)
@@ -90,13 +90,13 @@ model Order {
 // ============================================================
 model OrderItem {
   id        String   @id @default(uuid())
-  orderId   String
-  productId String
+  orderId   String                          @map("order_id")
+  productId String                          @map("product_id")
   quantity  Int
   price     Float    // 下单时的价格（快照，防止产品价格变动影响历史订单）
   subtotal  Float    // 小计 = quantity * price
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())        @map("created_at")
+  updatedAt DateTime @updatedAt             @map("updated_at")
 
   // 关联：一个订单项属于一个订单
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -158,18 +158,18 @@ model Pattern {
   id            String         @id @default(uuid())
   name          String
   code          String         @unique
-  actualHeight  Float          // 实际高度（厘米）
-  bleedHeight   Float          // 出血高度（厘米）
-  unitsPerRow   Int            // 每行个数
-  rowCount      Int            // 行数
-  localFilePath String?        // 本地 TIFF 文件路径
-  customerId    String?        // 关联客户（可选，某些图案可能专属某客户）
+  actualHeight  Float          @map("actual_height")  // 实际高度（厘米）
+  bleedHeight   Float          @map("bleed_height")   // 出血高度（厘米）
+  unitsPerRow   Int            @map("units_per_row")  // 每行个数
+  rowCount      Int            @map("row_count")      // 行数
+  localFilePath String?        @map("local_file_path") // 本地 TIFF 文件路径
+  customerId    String?        @map("customer_id")     // 关联客户（可选，某些图案可能专属某客户）
   folderId      String?        @map("folder_id")
   colorType     String         @default("SINGLE") @map("color_type")  // SINGLE, MULTI
   previewImage  String?        @map("preview_image")
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  isActive      Boolean        @default(true)  @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt        @map("updated_at")
 
   // 关联：一个图案可以属于一个客户（可选）
   customer       Customer?       @relation("CustomerPatterns", fields: [customerId], references: [id], onDelete: SetNull)
@@ -191,16 +191,16 @@ model Pattern {
 // ============================================================
 model OrderPatternItem {
   id             String   @id @default(uuid())
-  orderId        String
-  patternId      String
+  orderId        String                          @map("order_id")
+  patternId      String                          @map("pattern_id")
   quantity       Int
-  area           Float?   // 面积（平方米）
-  pricingMode    String   // 计价模式：QUANTITY（按数量）或 AREA（按面积）
-  unitPrice      Float    // 单价
-  totalPrice     Float    // 小计
-  colorVariantId String?  @map("color_variant_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  area           Float?                          @map("area")   // 面积（平方米）
+  pricingMode    String                          @map("pricing_mode") // 计价模式：QUANTITY（按数量）或 AREA（按面积）
+  unitPrice      Float                           @map("unit_price") // 单价
+  totalPrice     Float                           @map("total_price") // 小计
+  colorVariantId String?                         @map("color_variant_id")
+  createdAt      DateTime @default(now())        @map("created_at")
+  updatedAt      DateTime @updatedAt             @map("updated_at")
 
   // 关联：一个订单图案项属于一个订单
   order         Order        @relation("OrderPatternItems", fields: [orderId], references: [id], onDelete: Cascade)
@@ -223,13 +223,13 @@ model FinancialRecord {
   type          String   // PAYMENT, REFUND, ADJUSTMENT
   amount        Float
   description   String
-  orderId       String?  @map("order_id")
-  orderItemId   String?  @map("order_item_id")
-  customerId    String   @map("customer_id")
-  balanceBefore Float    @map("balance_before")
-  balanceAfter  Float    @map("balance_after")
-  operatorName  String   @map("operator_name")
-  createdAt     DateTime @default(now()) @map("created_at")
+  orderId       String?                    @map("order_id")
+  orderItemId   String?                    @map("order_item_id")
+  customerId    String                     @map("customer_id")
+  balanceBefore Float                      @map("balance_before")
+  balanceAfter  Float                      @map("balance_after")
+  operatorName  String                     @map("operator_name")
+  createdAt     DateTime @default(now())   @map("created_at")
 
   // 关联：财务记录属于一个客户
   customer   Customer          @relation("CustomerFinancialRecords", fields: [customerId], references: [id], onDelete: Cascade)

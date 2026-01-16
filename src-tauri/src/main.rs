@@ -95,12 +95,13 @@ pub fn run() {
             if !is_initialized {
                 println!("[启动] 数据库未初始化，正在执行初始化脚本...");
 
-                // 执行内嵌的初始化SQL
-                let init_sql = include_str!("../../prisma/init_schema.sql");
+                // 执行内嵌的初始化SQL（如果文件存在）
+                let init_sql_opt = include_str!("../../prisma/init_schema.sql");
+                let init_sql: &str = &init_sql_opt;
 
                 // 分割SQL语句并逐条执行
                 for sql in init_sql.split(";") {
-                    let sql = sql.trim();
+                    let sql: &str = sql.trim();
                     if !sql.is_empty() {
                         match db.sqlite().execute(sql, &[]) {
                             Ok(_) => {},
@@ -185,6 +186,9 @@ pub fn run() {
             pattern::delete_pattern,
             pattern::get_pattern_image,
             pattern::scan_folder_for_patterns,
+            pattern::save_pattern_image_cache,
+            pattern::load_pattern_image_cache,
+            pattern::clear_pattern_image_cache,
 
             // ============================================================
             // TIFF 文件处理命令
@@ -197,6 +201,7 @@ pub fn run() {
             stats::get_dashboard_stats,
             stats::get_company_financial_overview,
             stats::get_production_stats,
+            stats::get_customer_order_stats,
 
             // ============================================================
             // 图案文件夹管理命令
@@ -254,6 +259,13 @@ pub fn run() {
             settings::create_color_preset,
             settings::update_color_preset,
             settings::delete_color_preset,
+
+            // ============================================================
+            // 系统设置命令 - 收款码管理
+            // ============================================================
+            settings::upload_payment_qrcode,
+            settings::get_payment_qrcode,
+            settings::get_payment_qrcode_image,
 
             // ============================================================
             // 种子数据初始化命令

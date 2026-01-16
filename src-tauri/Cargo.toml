@@ -37,6 +37,7 @@ rfd = "0.16"
 # SQLite 直接访问 (使用 bundled 特性避免系统依赖)
 rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 tauri-plugin-opener = "2.5.3"
+md5 = "0.7"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
