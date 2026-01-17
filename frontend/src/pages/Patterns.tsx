@@ -1124,6 +1124,9 @@ export default function Patterns({ onNavigate }: PatternsProps) {
     try {
       const values = await form.validateFields();
 
+      // 保存当前表单中的客户ID（用于创建后保持选中状态）
+      const submittedCustomerId = values.customerId;
+
       if (editingPattern) {
         await PatternApi.update(
           editingPattern.id,
@@ -1150,7 +1153,12 @@ export default function Patterns({ onNavigate }: PatternsProps) {
       }
 
       setModalVisible(false);
-      loadPatterns();
+      await loadPatterns();
+
+      // 如果创建图案时选择了客户，保持文件夹树的选中状态
+      if (submittedCustomerId && !editingPattern) {
+        setSelectedFolderId(`customer-${submittedCustomerId}`);
+      }
     } catch (error) {
       message.error('操作失败: ' + error);
     }
@@ -1478,6 +1486,9 @@ export default function Patterns({ onNavigate }: PatternsProps) {
                   try {
                     const values = await form.validateFields();
 
+                    // 保存当前表单中的客户ID
+                    const submittedCustomerId = values.customerId;
+
                     // 先保存图案
                     await PatternApi.update(
                       editingPattern.id,
@@ -1495,6 +1506,11 @@ export default function Patterns({ onNavigate }: PatternsProps) {
 
                     // 刷新图案列表
                     await loadPatterns();
+
+                    // 保持文件夹树的选中状态
+                    if (submittedCustomerId) {
+                      setSelectedFolderId(`customer-${submittedCustomerId}`);
+                    }
 
                     // 然后打开快捷下单
                     setPendingPatternForOrder(editingPattern);

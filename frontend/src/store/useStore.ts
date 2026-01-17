@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Pattern } from '@/types';
+import type { Pattern, Customer, Order } from '@/types';
 
 /**
  * 应用配置接口
@@ -13,6 +13,20 @@ interface AppConfig {
   defaultPricePerSq: number;  // 默认每平方单价
   defaultBleedHeight: number; // 默认出血高度（厘米）
   pricingFormulaConstant: number; // 价格公式常数
+}
+
+/**
+ * 数据缓存状态接口
+ */
+interface DataCache {
+  customers: Customer[];
+  patterns: Pattern[];
+  orders: Order[];
+  lastUpdate: {
+    customers: number;
+    patterns: number;
+    orders: number;
+  };
 }
 
 /**
@@ -32,6 +46,14 @@ interface AppState {
   getPatternImage: (filePath: string) => string | undefined;
   clearPatternImageCache: () => Promise<void>;
   loadPatternImageCacheFromDisk: (filePaths: string[]) => Promise<void>;
+
+  // 数据缓存（内存缓存，刷新页面会清空）
+  dataCache: DataCache;
+  setCustomers: (customers: Customer[]) => void;
+  setPatterns: (patterns: Pattern[]) => void;
+  setOrders: (orders: Order[]) => void;
+  invalidateCache: (type: 'customers' | 'patterns' | 'orders' | 'all') => void;
+  isCacheValid: (type: 'customers' | 'patterns' | 'orders', maxAge?: number) => boolean;
 }
 
 /**
@@ -58,6 +80,18 @@ export const useStore = create<AppState>()(
 
       // 全局图片缓存（不持久化）
       patternImageCache: new Map(),
+
+      // 数据缓存初始化
+      dataCache: {
+        customers: [],
+        patterns: [],
+        orders: [],
+        lastUpdate: {
+          customers: 0,
+          patterns: 0,
+          orders: 0,
+        },
+      },
 
       // 更新配置（部分更新）
       setConfig: (newConfig) =>
@@ -173,6 +207,82 @@ export const useStore = create<AppState>()(
           console.error('加载配置失败:', error);
           // 加载失败时保持默认值
         }
+      },
+
+      // 数据缓存方法
+      setCustomers: (customers) =>
+        set((state) => ({
+          dataCache: {
+            ...state.dataCache,
+            customers,
+            lastUpdate: {
+              ...state.dataCache.lastUpdate,
+              customers: Date.now(),
+            },
+          },
+        })),
+
+      setPatterns: (patterns) =>
+        set((state) => ({
+          dataCache: {
+            ...state.dataCache,
+            patterns,
+            lastUpdate: {
+              ...state.dataCache.lastUpdate,
+              patterns: Date.now(),
+            },
+          },
+        })),
+
+      setOrders: (orders) =>
+        set((state) => ({
+          dataCache: {
+            ...state.dataCache,
+            orders,
+            lastUpdate: {
+              ...state.dataCache.lastUpdate,
+              orders: Date.now(),
+            },
+          },
+        })),
+
+      // 使缓存失效
+      invalidateCache: (type) => {
+        if (type === 'all') {
+          set({
+            dataCache: {
+              customers: [],
+              patterns: [],
+              orders: [],
+              lastUpdate: {
+                customers: 0,
+                patterns: 0,
+                orders: 0,
+              },
+            },
+          });
+        } else {
+          set((state) => ({
+            dataCache: {
+              ...state.dataCache,
+              [type]: [],
+              lastUpdate: {
+                ...state.dataCache.lastUpdate,
+                [type]: 0,
+              },
+            },
+          }));
+        }
+      },
+
+      // 检查缓存是否有效（默认 5 分钟内有效）
+      isCacheValid: (type, maxAge = 5 * 60 * 1000) => {
+        const state = get();
+        const lastUpdate = state.dataCache.lastUpdate[type];
+        const data = state.dataCache[type];
+
+        // 检查是否有数据且未过期
+        return data.length > 0 && Date.now() - lastUpdate < maxAge;
       },
     }),
     {

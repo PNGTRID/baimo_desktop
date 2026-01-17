@@ -223,7 +223,7 @@ export const PatternApi = {
    * 保存图片缓存到磁盘
    */
   async saveImageCache(filePath: string, imageData: string): Promise<string> {
-    return await safeInvoke<string>('save_pattern_image_cache', { filePath, image_data: imageData });
+    return await safeInvoke<string>('save_pattern_image_cache', { filePath, imageData });
   },
 
   /**

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Button,
   Table,
@@ -24,11 +24,11 @@ import type { Customer } from '@/types';
 import { CustomerApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
+import { useCustomersCache } from '@/hooks/useDataCache';
 
 export default function Customers() {
   const { message } = App.useApp();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [customers, loading, error, refreshCustomers] = useCustomersCache();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [form] = Form.useForm();
@@ -38,25 +38,10 @@ export default function Customers() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>();
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
 
-  // 加载客户列表
-  const loadCustomers = async () => {
-    setLoading(true);
-    try {
-      const data = await CustomerApi.getAll();
-      setCustomers(data);
-    } catch (error) {
-      message.error('加载客户列表失败');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 组件挂载时加载数据
-  useEffect(() => {
-    loadCustomers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 显示加载错误
+  if (error) {
+    message.error(error);
+  }
 
   // 打开创建/编辑模态框
   const handleOpenModal = (customer: Customer | null = null) => {
@@ -83,20 +68,19 @@ export default function Customers() {
 
       if (editingCustomer) {
         // 更新客户
-        const updated = await CustomerApi.update({
+        await CustomerApi.update({
           id: editingCustomer.id,
           ...values,
         });
-        if (updated) {
-          setCustomers(customers.map((c) => (c.id === updated.id ? updated : c)));
-          message.success('客户更新成功');
-        }
+        message.success('客户更新成功');
       } else {
         // 创建客户（后端自动创建同名文件夹）
-        const newCustomer = await CustomerApi.create(values);
-        setCustomers([...customers, newCustomer]);
+        await CustomerApi.create(values);
         message.success('客户创建成功');
       }
+
+      // 刷新缓存
+      await refreshCustomers();
 
       setIsModalOpen(false);
       form.resetFields();
@@ -111,8 +95,10 @@ export default function Customers() {
   const handleDeleteCustomer = async (id: string) => {
     try {
       await CustomerApi.delete(id);
-      setCustomers(customers.filter((c) => c.id !== id));
       message.success('客户删除成功');
+
+      // 刷新缓存
+      await refreshCustomers();
     } catch (error) {
       message.error('客户删除失败');
       console.error(error);
@@ -269,7 +255,7 @@ export default function Customers() {
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={loadCustomers}
+            onClick={refreshCustomers}
             loading={loading}
           >
             刷新

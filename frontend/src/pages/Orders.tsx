@@ -22,8 +22,8 @@ import {
   PictureOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
-import type { Order, OrderPatternItem, Customer, Pattern } from '@/types';
-import { OrderApi, CustomerApi } from '@/services/tauriApi';
+import type { Order, OrderPatternItem, Pattern } from '@/types';
+import { OrderApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
 import OrderEditModal from '@/components/order/OrderEditModal';
@@ -31,6 +31,7 @@ import AddOrderItemModal from '@/components/order/AddOrderItemModal';
 import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
 import { useStore } from '@/store/useStore';
+import { useOrdersCache, useCustomersCache } from '@/hooks/useDataCache';
 
 const { Text } = Typography;
 
@@ -197,9 +198,10 @@ export default function Orders() {
   const { pendingPatternForOrder, setPendingPatternForOrder } = useStore();
   const hasCheckedPendingPattern = useRef(false);
 
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]); // 客户列表
-  const [loading, setLoading] = useState(false);
+  // 使用缓存 Hook
+  const [orders, ordersLoading, ordersError, refreshOrders] = useOrdersCache();
+  const [customers, customersLoading, customersError] = useCustomersCache();
+  const loading = ordersLoading || customersLoading;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 批量选中的订单 ID
@@ -223,31 +225,11 @@ export default function Orders() {
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
 
   // 加载订单列表
-  const loadOrders = async () => {
-    console.log('[订单刷新] loadOrders 开始');
-    setLoading(true);
-    try {
-      const [data, customersData] = await Promise.all([
-        OrderApi.getAll(),
-        CustomerApi.getAll(),
-      ]);
-      console.log('[订单刷新] 获取到订单数据:', data.length, '条');
-      setOrders(data);
-      setCustomers(customersData.filter((c) => c.isActive));
-      console.log('[订单刷新] 订单列表更新完成');
-    } catch (error) {
-      console.error('[订单刷新] 加载失败:', error);
-      message.error('加载订单列表失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 组件挂载时加载数据
+  // 显示错误信息
   useEffect(() => {
-    loadOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (ordersError) message.error(ordersError);
+    if (customersError) message.error(customersError);
+  }, [ordersError, customersError, message]);
 
   // 检查是否有预选的图案（从快捷下单功能）
   useEffect(() => {
@@ -286,9 +268,9 @@ export default function Orders() {
   const handleModalSuccess = async () => {
     console.log('[订单刷新] handleModalSuccess 被调用');
     setEditingOrder(null);
-    console.log('[订单刷新] 开始调用 loadOrders()');
-    await loadOrders();
-    console.log('[订单刷新] loadOrders() 完成');
+    console.log('[订单刷新] 开始调用 refreshOrders()');
+    await refreshOrders();
+    console.log('[订单刷新] refreshOrders() 完成');
   };
 
   // 删除订单
@@ -296,9 +278,8 @@ export default function Orders() {
     try {
       const success = await OrderApi.delete(id);
       if (success) {
-        setOrders(orders.filter((o) => o.id !== id));
         message.success('订单删除成功');
-        await loadOrders();
+        await refreshOrders();
       } else {
         message.error('订单删除失败');
       }
@@ -311,9 +292,9 @@ export default function Orders() {
   // 确认并生产订单
   const handleConfirm = async (id: string) => {
     try {
-      const updatedOrder = await OrderApi.confirm(id);
-      setOrders(orders.map((o) => (o.id === id ? updatedOrder : o)));
+      await OrderApi.confirm(id);
       message.success('订单已确认并生产');
+      await refreshOrders();
     } catch (error) {
       message.error('确认失败');
       console.error(error);
@@ -331,7 +312,7 @@ export default function Orders() {
       const count = await OrderApi.batchDelete(selectedRowKeys as string[]);
       message.success(`成功删除 ${count} 个订单`);
       setSelectedRowKeys([]);
-      await loadOrders();
+      await refreshOrders();
     } catch (error) {
       message.error('批量删除失败');
       console.error(error);
@@ -376,7 +357,7 @@ export default function Orders() {
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} style={{ fontWeight: 500 }}>
             新建订单
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={loadOrders} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={refreshOrders} loading={loading}>
             刷新
           </Button>
           {selectedRowKeys.length > 0 && (
@@ -511,7 +492,7 @@ export default function Orders() {
         visible={addItemModalVisible}
         preselectedPattern={pendingPattern}
         onSuccess={async () => {
-          await loadOrders();
+          await refreshOrders();
           setAddItemModalVisible(false);
           setPendingPattern(null);
         }}

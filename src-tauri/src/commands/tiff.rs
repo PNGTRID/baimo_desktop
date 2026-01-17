@@ -58,24 +58,30 @@ fn parse_with_imagemagick(file_path: &Path) -> Result<TiffMetadata, String> {
         .map(|m| m.len())
         .unwrap_or(0);
 
-    // 尝试多种方式调用 ImageMagick
+    // 获取 ImageMagick 路径
+    let magick_path = get_imagemagick_path()?;
+
+    // 设置环境变量，确保 DLL 能被找到
+    let mut cmd = std::process::Command::new(&magick_path);
+
+    // 如果使用打包的 ImageMagick，添加 DLL 搜索路径
+    if let Some(magick_dir) = magick_path.parent() {
+        // Windows: 设置 PATH 环境变量包含 ImageMagick 目录
+        if cfg!(target_os = "windows") {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let new_path = format!("{};{}", magick_dir.display(), current_path);
+            cmd.env("PATH", new_path);
+        }
+
+        // 设置 MAGICK_HOME 环境变量
+        cmd.env("MAGICK_HOME", magick_dir);
+    }
+
     // 使用 -ping 选项只获取基础图像信息，不加载所有图层
-    let output = if let Ok(output) = std::process::Command::new("identify")
-        .args(["-ping", "-format", "%w\n%h\n%x", file_path.to_str().unwrap()])
+    let output = cmd
+        .args(["identify", "-ping", "-format", "%w\n%h\n%x", file_path.to_str().unwrap()])
         .output()
-    {
-        // 优先使用 identify 命令（v6 和 v7 都兼容）
-        // 格式：每行一个值（宽度、高度、X分辨率）
-        output
-    } else if let Ok(magick_path) = get_imagemagick_path() {
-        // 备用：使用 magick identify（v7 语法）
-        std::process::Command::new(&magick_path)
-            .args(["identify", "-ping", "-format", "%w\n%h\n%x", file_path.to_str().unwrap()])
-            .output()
-            .map_err(|e| format!("ImageMagick 执行失败: {}", e))?
-    } else {
-        return Err("未找到 ImageMagick。请安装 ImageMagick 并确保 identify 或 magick 命令在系统 PATH 中。".to_string());
-    };
+        .map_err(|e| format!("ImageMagick 执行失败: {}。路径: {}", e, magick_path.display()))?;
 
     if !output.status.success() {
         return Err(format!("ImageMagick 处理图片失败: {}",
@@ -144,7 +150,58 @@ fn parse_with_imagemagick(file_path: &Path) -> Result<TiffMetadata, String> {
 
 /// 获取 ImageMagick 可执行文件路径
 fn get_imagemagick_path() -> Result<std::path::PathBuf, String> {
-    // 优先查找系统路径中的 magick 命令
+    println!("[ImageMagick] 开始查找 ImageMagick 可执行文件...");
+
+    // 1. 优先查找打包的 ImageMagick（生产环境）
+    if let Ok(exe_dir) = std::env::current_exe() {
+        println!("[ImageMagick] 当前可执行文件路径: {}", exe_dir.display());
+        if let Some(parent) = exe_dir.parent() {
+            // Windows NSIS 打包路径：与 exe 同级的 resources 目录
+            let bundled_path = parent.join("resources").join("imagemagick").join("magick.exe");
+            println!("[ImageMagick] 检查打包路径: {}", bundled_path.display());
+            if bundled_path.exists() {
+                println!("[ImageMagick] ✓ 找到打包的 ImageMagick: {}", bundled_path.display());
+                return Ok(bundled_path);
+            }
+
+            // macOS .app 打包路径
+            let macos_bundled_path = parent.parent()
+                .and_then(|p| Some(p.join("Resources").join("imagemagick").join("magick")));
+            if let Some(path) = macos_bundled_path {
+                if path.exists() {
+                    println!("[ImageMagick] ✓ 找到 macOS 打包的 ImageMagick: {}", path.display());
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    // 2. 开发环境：查找 src-tauri/resources/imagemagick
+    if let Ok(current_dir) = std::env::current_dir() {
+        println!("[ImageMagick] 当前工作目录: {}", current_dir.display());
+        let dev_path = current_dir.join("src-tauri").join("resources").join("imagemagick").join("magick.exe");
+        println!("[ImageMagick] 检查开发环境路径: {}", dev_path.display());
+        if dev_path.exists() {
+            println!("[ImageMagick] ✓ 找到开发环境的 ImageMagick: {}", dev_path.display());
+            return Ok(dev_path);
+        }
+    }
+
+    // 3. 查找系统 PATH 中的 magick 命令
+    if let Ok(output) = std::process::Command::new("where")
+        .args(["magick"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let path = stdout_str.lines().next().unwrap_or("").trim();
+            if !path.is_empty() && std::path::Path::new(path).exists() {
+                return Ok(std::path::PathBuf::from(path));
+            }
+        }
+    }
+
+    // 4. Unix 系统使用 which 命令
     if let Ok(output) = std::process::Command::new("which")
         .args(["magick"])
         .output()
@@ -158,22 +215,7 @@ fn get_imagemagick_path() -> Result<std::path::PathBuf, String> {
         }
     }
 
-    // 检查常见的 ImageMagick 安装位置
-    let _common_paths = [
-        "/usr/local/bin/magick",
-        "/usr/bin/magick",
-        "C:\\Program Files\\ImageMagick-*\\magick.exe",
-        "C:\\ImageMagick\\magick.exe",
-    ];
-
-    // 检查 convert 命令（旧版 ImageMagick）
-    for pattern in &["/usr/local/bin/convert", "/usr/bin/convert"] {
-        if std::path::Path::new(pattern).exists() {
-            return Ok(std::path::PathBuf::from(pattern));
-        }
-    }
-
-    Err("未找到 ImageMagick。请安装 ImageMagick 并确保 magick 命令在系统 PATH 中。".to_string())
+    Err("未找到 ImageMagick。请确保 ImageMagick 已正确打包或安装在系统中。".to_string())
 }
 
 /// 解析图片文件元数据（支持多种格式：TIFF/JPG/PNG/WEBP/BMP/GIF/PSD）
@@ -188,34 +230,6 @@ pub async fn parse_tiff_file(file_path: String) -> Result<TiffMetadata, String> 
 
     // 使用 parse_image_file 支持多种格式
     parse_image_file(path)
-}
-
-/// 在指定偏移量处读取 u32
-fn read_u32_at(file: &mut std::fs::File, offset: u32, is_little_endian: bool) -> Result<u32, String> {
-    let current_pos = file.stream_position().map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(offset as u64)).map_err(|e| e.to_string())?;
-    let mut bytes = [0u8; 4];
-    file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(current_pos)).map_err(|e| e.to_string())?;
-    Ok(if is_little_endian {
-        u32::from_le_bytes(bytes)
-    } else {
-        u32::from_be_bytes(bytes)
-    })
-}
-
-/// 在指定偏移量处读取 u16
-fn read_u16_at(file: &mut std::fs::File, offset: u32, is_little_endian: bool) -> Result<u16, String> {
-    let current_pos = file.stream_position().map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(offset as u64)).map_err(|e| e.to_string())?;
-    let mut bytes = [0u8; 2];
-    file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(current_pos)).map_err(|e| e.to_string())?;
-    Ok(if is_little_endian {
-        u16::from_le_bytes(bytes)
-    } else {
-        u16::from_be_bytes(bytes)
-    })
 }
 
 // ============================================================

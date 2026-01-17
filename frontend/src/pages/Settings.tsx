@@ -37,6 +37,7 @@ import type { ColorPreset, SystemLog } from '@/types';
 import { SettingsApi, ColorPresetApi, SystemLogApi, FinancialApi, BackupApi, WebsiteApi, FileDialogApi } from '@/services/tauriApi';
 import { useStore } from '@/store/useStore';
 import dayjs from 'dayjs';
+import UpdateChecker from '@/components/settings/UpdateChecker';
 
 const { Title, Text } = Typography;
 
@@ -1066,6 +1067,11 @@ export default function Settings() {
                 </Row>
               </>
             ),
+          },
+          {
+            key: 'update',
+            label: '系统更新',
+            children: <UpdateChecker />,
           },
         ]}
       />

@@ -355,7 +355,7 @@ pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
     let result = convert_with_imagemagick_simple(&file_path, THUMBNAIL_PREVIEW_SIZE);
     let elapsed = start_time.elapsed();
     match &result {
-        Ok(data) => eprintln!("[GET_PATTERN_IMAGE] 其他格式加载成功: 耗时={}ms", elapsed.as_millis()),
+        Ok(_data) => eprintln!("[GET_PATTERN_IMAGE] 其他格式加载成功: 耗时={}ms", elapsed.as_millis()),
         Err(e) => eprintln!("[GET_PATTERN_IMAGE] 其他格式加载失败: 耗时={}ms, error={}", elapsed.as_millis(), e),
     }
     result
