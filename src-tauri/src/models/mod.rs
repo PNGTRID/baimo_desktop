@@ -113,6 +113,7 @@ pub struct Order {
     pub created_at: String,
     pub updated_at: String,
     pub items: Vec<OrderPatternItem>,
+    pub product_items: Vec<OrderProductItem>, // 产品订单项
 }
 
 /// 订单图案项
@@ -149,6 +150,37 @@ pub struct CreateOrderItemRequest {
     pub area: Option<f64>,
     pub pricing_mode: String,
     pub color_variant_id: Option<String>,  // 颜色变体 ID
+}
+
+/// 产品订单项请求（添加到订单时使用）
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateOrderProductItemRequest {
+    pub product_id: String,
+    pub quantity: i32,
+}
+
+/// 产品订单项（用于返回）
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderProductItem {
+    pub id: String,
+    pub product_id: String,
+    pub product_name: String,
+    pub product_unit: String,
+    pub quantity: i32,
+    pub price: f64,
+    pub subtotal: f64,
+}
+
+/// 添加产品到订单的请求
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddProductsToOrderRequest {
+    pub order_id: Option<String>,  // 如果指定则添加到现有订单，否则创建新订单
+    pub customer_id: String,
+    pub product_items: Vec<CreateOrderProductItemRequest>,
+    pub notes: Option<String>,
 }
 
 /// 更新订单请求（仅备注）
@@ -195,12 +227,13 @@ pub struct CustomerOrderStats {
 // 新增模块导出 - 数据模型
 // ============================================================
 
-pub mod pattern_folder;
-pub mod pattern_color;
-pub mod financial;
-pub mod system_log;
-pub mod color_preset;
 pub mod app_config;
+pub mod color_preset;
+pub mod financial;
+pub mod pattern_color;
+pub mod pattern_folder;
+pub mod product;
+pub mod system_log;
 
 // 重新导出公共结构体，便于使用
 pub use pattern_folder::{

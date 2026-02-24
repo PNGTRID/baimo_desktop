@@ -26,6 +26,36 @@ const THUMBNAIL_PREVIEW_SIZE: u32 = 800;
 // 辅助函数
 // ============================================================
 
+/// 生成图案预览图（同步函数）
+/// 根据文件类型调用相应的生成函数
+fn generate_preview_for_file(file_path: &str) -> Option<String> {
+    if file_path.is_empty() {
+        return None;
+    }
+
+    let is_tiff = file_path.to_lowercase().ends_with(".tif") ||
+                  file_path.to_lowercase().ends_with(".tiff");
+
+    let result = if is_tiff {
+        // TIFF 文件使用快速采样
+        generate_fast_thumbnail(file_path, THUMBNAIL_PREVIEW_SIZE)
+    } else {
+        // 其他格式使用 ImageMagick
+        convert_with_imagemagick_simple(file_path, THUMBNAIL_PREVIEW_SIZE)
+    };
+
+    match result {
+        Ok(data) => {
+            eprintln!("[GENERATE_PREVIEW] 预览图生成成功: path={}, size={} bytes", file_path, data.len());
+            Some(data)
+        }
+        Err(e) => {
+            eprintln!("[GENERATE_PREVIEW] 预览图生成失败: path={}, error={}", file_path, e);
+            None
+        }
+    }
+}
+
 /// 从数据库获取配置值（浮点数）
 fn get_config_f64(db: &Database, key: &str, default: f64) -> f64 {
     db.sqlite().query_row(
@@ -134,10 +164,16 @@ pub async fn create_pattern(
         None
     };
 
+    // 生成预览图并保存到数据库
+    let preview_image = request.local_file_path
+        .as_ref()
+        .map(|path| generate_preview_for_file(path))
+        .flatten();
+
     db.sqlite().execute(
         "INSERT INTO patterns (id, name, code, actual_height, bleed_height, units_per_row, row_count,
-                               local_file_path, customer_id, folder_id, is_active, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                               local_file_path, customer_id, folder_id, preview_image, is_active, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         &[
             &id as &dyn rusqlite::ToSql,
             &request.name,
@@ -149,6 +185,7 @@ pub async fn create_pattern(
             &request.local_file_path,
             &request.customer_id,
             &folder_id,
+            &preview_image,
             &true, // isActive
             &now,
             &now,
@@ -170,8 +207,8 @@ pub async fn create_pattern_from_tiff(
     let code = request.code.unwrap_or_else(|| format!("TEMP_{}", id[..8].to_string()));
     let now = chrono::Utc::now().timestamp();
 
-    // 不生成缩略图，直接保存（前端需要时再从 localFilePath 动态加载）
-    let preview_image: Option<String> = None;
+    // 生成预览图并保存到数据库（这样预览图会持久化，不需要每次重新生成）
+    let preview_image = generate_preview_for_file(&request.local_file_path);
 
     // 默认每行个数（用户可在编辑窗口修改）
     let units_per_row = DEFAULT_UNITS_PER_ROW;
@@ -362,7 +399,8 @@ pub async fn get_pattern_image(file_path: String) -> Result<String, String> {
 }
 
 // 辅助函数：将 TIFF 数据转换为 PNG
-fn convert_tiff_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
+// 辅助函数：将 TIFF 数据转换为 JPEG（50% 质量）
+fn convert_tiff_to_jpeg(data: &[u8]) -> Result<Vec<u8>, String> {
     use std::io::Cursor;
 
     // 方法1：尝试使用 image crate（支持 RGB/RGBA TIFF）
@@ -393,7 +431,7 @@ fn convert_tiff_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
                         // 检测通道数并转换为 RGB
                         let samples_per_pixel = (data.len() / ((width * height) as usize)).max(1);
                         let rgb_data = convert_multi_channel_to_rgb(&data, width, height, samples_per_pixel);
-                        encode_rgb_to_png(width, height, rgb_data)
+                        encode_rgb_to_jpeg(width, height, rgb_data)
                     } else {
                         return Err("不支持的数据格式".to_string());
                     }
@@ -405,7 +443,7 @@ fn convert_tiff_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
 
                     // 如果错误是"不支持的颜色类型"，尝试使用手动解析
                     if error_str.contains("unsupported") || error_str.contains("is unsupported") {
-                        match convert_multi_channel_cmyk_to_png(data) {
+                        match convert_multi_channel_cmyk_to_jpeg(data) {
                             Ok(png) => return Ok(png),
                             Err(manual_err) => {
                                 // 手动解析失败，尝试 ImageMagick
@@ -425,7 +463,7 @@ fn convert_tiff_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
         }
         Err(e) => {
             // 最后尝试手动解析多通道 CMYK，如果失败则尝试 ImageMagick
-            match convert_multi_channel_cmyk_to_png(data) {
+            match convert_multi_channel_cmyk_to_jpeg(data) {
                 Ok(png) => return Ok(png),
                 Err(manual_err) => {
                     match convert_tiff_with_imagemagick(data) {
@@ -492,23 +530,26 @@ fn convert_multi_channel_to_rgb(data: &[u8], width: u32, height: u32, samples_pe
     rgb
 }
 
-// 编码 RGB 数据为 PNG
-fn encode_rgb_to_png(width: u32, height: u32, rgb_data: Vec<u8>) -> Result<Vec<u8>, String> {
+// 编码 RGB 数据为 JPEG（50% 质量）
+fn encode_rgb_to_jpeg(width: u32, height: u32, rgb_data: Vec<u8>) -> Result<Vec<u8>, String> {
     use std::io::Cursor;
 
     let img = image::RgbImage::from_raw(width, height, rgb_data)
         .ok_or("无法创建 RGB 图像")?;
 
-    let mut png_bytes = Vec::new();
-    let mut cursor = Cursor::new(&mut png_bytes);
-    img.write_to(&mut cursor, image::ImageFormat::Png)
-        .map_err(|e| format!("PNG 编码失败: {}", e))?;
+    let mut jpeg_bytes = Vec::new();
+    let mut cursor = Cursor::new(&mut jpeg_bytes);
 
-    Ok(png_bytes)
+    // 使用 image crate 的 JPEG 编码器，质量 50
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 50);
+    img.write_with_encoder(encoder)
+        .map_err(|e| format!("JPEG 编码失败: {}", e))?;
+
+    Ok(jpeg_bytes)
 }
 
-// 手动解析多通道 CMYK TIFF（支持 5+ 通道，如 CMYK + 专色）
-fn convert_multi_channel_cmyk_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
+// 手动解析多通道 CMYK TIFF 并转换为 JPEG（50% 质量）
+fn convert_multi_channel_cmyk_to_jpeg(data: &[u8]) -> Result<Vec<u8>, String> {
     use std::io::{Cursor, Read, Seek, SeekFrom};
 
     let mut cursor = Cursor::new(data);
@@ -655,7 +696,7 @@ fn convert_multi_channel_cmyk_to_png(data: &[u8]) -> Result<Vec<u8>, String> {
         }
     }
 
-    encode_rgb_to_png(width, height, rgb)
+    encode_rgb_to_jpeg(width, height, rgb)
 }
 
 // 读取偏移量数组
@@ -783,7 +824,7 @@ fn generate_thumbnail(data: &[u8], max_size: u32) -> Result<String, String> {
     use std::io::Cursor;
 
     // 先转换为 PNG
-    let png_data = convert_tiff_to_png(data)?;
+    let png_data = convert_tiff_to_jpeg(data)?;
 
     // 加载 PNG 并缩放
     let img = image::load_from_memory(&png_data)
@@ -987,13 +1028,13 @@ fn convert_with_imagemagick_simple(file_path: &str, max_size: u32) -> Result<Str
     let start = std::time::Instant::now();
 
     // 使用 ImageMagick 直接转换并缩放，使用 JPEG 压缩
-    // -quality 60: JPEG 质量 60%（快速预览）
+    // -quality 50: JPEG 质量 50%（平衡体积和画质）
     // -strip: 移除所有元数据，减少文件大小
     let convert_result = create_imagemagick_command(&magick_path, &magick_home)
         .arg(format!("{}[0]", file_path))  // 只读取第一页
         .arg("-strip")      // 移除元数据
         .arg("-quality")    // JPEG 质量
-        .arg("60")          // 60% 质量（快速预览）
+        .arg("50")          // 50% 质量（平衡体积和画质）
         .arg("-resize")
         .arg(format!("{}x{}", max_size, max_size))
         .arg(&temp_output)
