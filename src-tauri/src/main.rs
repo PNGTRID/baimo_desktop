@@ -8,6 +8,7 @@ mod utils;
 
 use commands::{
     customer,
+    product,
     file_dialog,
     stats,
     order,
@@ -163,6 +164,19 @@ pub fn run() {
             customer::create_customer,
             customer::update_customer,
             customer::delete_customer,
+
+            // ============================================================
+            // 产品相关命令
+            // ============================================================
+            product::get_products,
+            product::get_product_by_id,
+            product::create_product,
+            product::update_product,
+            product::delete_product,
+            product::get_order_product_items,
+            product::add_products_to_order,
+            product::update_order_product_item,
+            product::delete_order_product_item,
 
             // ============================================================
             // 订单相关命令

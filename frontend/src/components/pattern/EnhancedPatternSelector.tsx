@@ -25,14 +25,16 @@ import {
   App,
   Select,
   Table,
+  Image,
 } from 'antd';
 import {
   SearchOutlined,
   FormatPainterOutlined,
   CheckOutlined,
 } from '@ant-design/icons';
-import { PatternColorApi, CustomerApi } from '@/services/tauriApi';
+import { PatternColorApi, CustomerApi, PatternApi } from '@/services/tauriApi';
 import type { Pattern, PatternColor, PricingMode, Customer } from '@/types';
+import { useStore } from '@/store/useStore';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -90,6 +92,7 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
   allowMultiple = false,
 }) => {
   const { message } = App.useApp();
+  const { getPatternImage, setPatternImage } = useStore();
   const [searchText, setSearchText] = useState('');
   const [selectedCustomerFilter, setSelectedCustomerFilter] = useState<string | undefined>(undefined);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -99,6 +102,8 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
   const [area, setArea] = useState<number>(0);
   const [internalMode, setInternalMode] = useState<PricingMode>(mode);
   const [patternsLoading, setPatternsLoading] = useState(false);
+  const [previewImages, setPreviewImages] = useState<Map<string, string>>(new Map());
+  const [previewImagesLoading, setPreviewImagesLoading] = useState(false);
 
   // 加载带颜色变体的图案数据
   const [patternsWithVariants, setPatternsWithVariants] = useState<PatternWithVariants[]>([]);
@@ -159,6 +164,50 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
     }
   }, [visible, patterns]);
 
+  // 加载预览图
+  useEffect(() => {
+    const loadPreviewImages = async () => {
+      if (!visible || patterns.length === 0) return;
+
+      setPreviewImagesLoading(true);
+      const newPreviewImages = new Map<string, string>();
+
+      try {
+        await Promise.all(
+          patterns.map(async (pattern) => {
+            // 优先使用已存储的 previewImage
+            if (pattern.previewImage) {
+              newPreviewImages.set(pattern.id, pattern.previewImage);
+            } else if (pattern.localFilePath) {
+              // 检查缓存
+              const cached = getPatternImage(pattern.localFilePath);
+              if (cached) {
+                newPreviewImages.set(pattern.id, cached);
+              } else {
+                // 缓存未命中，加载并缓存
+                try {
+                  const imageUrl = await PatternApi.getPatternImage(pattern.localFilePath);
+                  if (imageUrl) {
+                    setPatternImage(pattern.localFilePath, imageUrl);
+                    newPreviewImages.set(pattern.id, imageUrl);
+                  }
+                } catch (error) {
+                  console.error(`加载图案 ${pattern.id} 预览图失败:`, error);
+                }
+              }
+            }
+          })
+        );
+
+        setPreviewImages(newPreviewImages);
+      } finally {
+        setPreviewImagesLoading(false);
+      }
+    };
+
+    loadPreviewImages();
+  }, [visible, patterns]);
+
   // 重置选择状态
   const resetSelection = () => {
     setSelectedPattern(null);
@@ -166,6 +215,7 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
     setQuantity(0);
     setArea(0);
     setSelectedPatterns(new Map());
+    setPreviewImages(new Map());
   };
 
   // 获取筛选后的图案列表
@@ -226,8 +276,8 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
             colorVariantId: cv.id,
             colorVariant: cv,
             pricingMode: cv.isDefault ? internalMode : 'QUANTITY',
-            quantity: cv.isDefault && internalMode === 'QUANTITY' ? 1 : 0,
-            area: cv.isDefault && internalMode === 'AREA' ? 1 : 0,
+            quantity: 0,
+            area: 0,
           });
         });
 
@@ -424,7 +474,7 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
           {/* 图案预览区域 */}
           <div
             style={{
-              height: isMobile ? 120 : 160,
+              height: isMobile ? 140 : 200,
               background: isSelected ? 'linear-gradient(135deg, #1890ff10, #1890ff05)' : '#fafafa',
               display: 'flex',
               alignItems: 'center',
@@ -432,22 +482,28 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
               marginBottom: 8,
             }}
           >
-            {pattern.previewImage ? (
-              <img
-                src={pattern.previewImage}
+            {previewImagesLoading ? (
+              <Spin size="small" />
+            ) : previewImages.get(pattern.id) ? (
+              <Image
+                src={previewImages.get(pattern.id)}
                 alt={pattern.name}
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '80%',
+                  maxWidth: '90%',
+                  maxHeight: '90%',
                   objectFit: 'contain',
                   borderRadius: 4,
+                  cursor: 'pointer',
+                }}
+                preview={{
+                  src: previewImages.get(pattern.id),
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: 60,
-                  height: 60,
+                  width: 80,
+                  height: 80,
                   backgroundColor: '#f0f0f0',
                   borderRadius: 8,
                   display: 'flex',
@@ -455,7 +511,7 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
                   justifyContent: 'center',
                 }}
               >
-                <FormatPainterOutlined style={{ fontSize: 24, color: '#bfbfbf' }} />
+                <FormatPainterOutlined style={{ fontSize: 32, color: '#bfbfbf' }} />
               </div>
             )}
           </div>
@@ -661,24 +717,30 @@ const EnhancedPatternSelector: React.FC<EnhancedPatternSelectorProps> = ({
                     width: 80,
                     render: (_: unknown, record: PatternWithVariants) => (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {record.previewImage ? (
-                          <img
-                            src={record.previewImage}
+                        {previewImagesLoading ? (
+                          <Spin size="small" />
+                        ) : previewImages.get(record.id) ? (
+                          <Image
+                            src={previewImages.get(record.id)}
                             alt={record.name}
                             style={{
-                              width: 50,
-                              height: 50,
+                              maxWidth: 80,
+                              maxHeight: 60,
                               objectFit: 'contain',
                               borderRadius: 4,
                               border: '1px solid #f0f0f0',
                               backgroundColor: '#fafafa',
+                              cursor: 'pointer',
+                            }}
+                            preview={{
+                              src: previewImages.get(record.id),
                             }}
                           />
                         ) : (
                           <div
                             style={{
-                              width: 50,
-                              height: 50,
+                              width: 60,
+                              height: 45,
                               backgroundColor: '#f0f0f0',
                               borderRadius: 4,
                               display: 'flex',

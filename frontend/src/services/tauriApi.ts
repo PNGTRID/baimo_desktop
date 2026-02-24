@@ -61,6 +61,7 @@ import type {
   CreateOrderRequest,
   CreatePatternFromTiffRequest,
   CreatePatternRequest,
+  CreateProductRequest,
   Customer,
   CustomerDebt,
   CustomerDebtParams,
@@ -76,6 +77,7 @@ import type {
   PatternColor,
   PatternFolder,
   ProductionStats,
+  Product,
   ScanFolderRequest,
   SystemLog,
   SystemLogParams,
@@ -87,6 +89,9 @@ import type {
   UpdateFolderRequest,
   UpdateOrderRequest,
   UpdateOrderFullRequest,
+  UpdateProductRequest,
+  AddProductsToOrderRequest,
+  OrderProductItem,
 } from '@/types';
 
 // ============ TIFF 相关 ============
@@ -136,6 +141,74 @@ export const CustomerApi = {
    */
   async delete(id: string): Promise<boolean> {
     return await safeInvoke<boolean>('delete_customer', { id });
+  },
+};
+
+// ============ 产品相关 ============
+export const ProductApi = {
+  /**
+   * 获取所有产品
+   */
+  async getAll(): Promise<Product[]> {
+    return await safeInvoke<Product[]>('get_products');
+  },
+
+  /**
+   * 根据 ID 获取产品
+   */
+  async getById(id: string): Promise<Product | null> {
+    const result = await safeInvoke<Product | null>('get_product_by_id', { id });
+    return result;
+  },
+
+  /**
+   * 创建产品
+   */
+  async create(data: CreateProductRequest): Promise<Product> {
+    return await safeInvoke<Product>('create_product', { request: data });
+  },
+
+  /**
+   * 更新产品
+   */
+  async update(data: UpdateProductRequest): Promise<Product | null> {
+    const result = await safeInvoke<Product | null>('update_product', { request: data });
+    return result;
+  },
+
+  /**
+   * 删除产品
+   */
+  async delete(id: string): Promise<boolean> {
+    return await safeInvoke<boolean>('delete_product', { id });
+  },
+
+  /**
+   * 获取订单中的产品项
+   */
+  async getOrderProductItems(orderId: string): Promise<OrderProductItem[]> {
+    return await safeInvoke<OrderProductItem[]>('get_order_product_items', { orderId });
+  },
+
+  /**
+   * 添加产品到订单
+   */
+  async addProductsToOrder(request: AddProductsToOrderRequest): Promise<Order> {
+    return await safeInvoke<Order>('add_products_to_order', { request });
+  },
+
+  /**
+   * 更新产品订单项数量
+   */
+  async updateOrderProductItem(itemId: string, quantity: number): Promise<boolean> {
+    return await safeInvoke<boolean>('update_order_product_item', { itemId, quantity });
+  },
+
+  /**
+   * 删除产品订单项
+   */
+  async deleteOrderProductItem(itemId: string): Promise<boolean> {
+    return await safeInvoke<boolean>('delete_order_product_item', { itemId });
   },
 };
 

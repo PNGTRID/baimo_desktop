@@ -12,6 +12,7 @@ import {
   Divider,
   Row,
   Col,
+  Tag,
 } from 'antd';
 import {
   PlusOutlined,
@@ -21,13 +22,15 @@ import {
   CameraOutlined,
   PictureOutlined,
   CalendarOutlined,
+  ShoppingOutlined,
 } from '@ant-design/icons';
-import type { Order, OrderPatternItem, Pattern } from '@/types';
+import type { Order, OrderPatternItem, OrderProductItem, Pattern } from '@/types';
 import { OrderApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';
 import OrderEditModal from '@/components/order/OrderEditModal';
 import AddOrderItemModal from '@/components/order/AddOrderItemModal';
+import AddProductToOrderModal from '@/components/order/AddProductToOrderModal';
 import CustomerDailyOrdersModal from '@/components/order/CustomerDailyOrdersModal';
 import { PatternPreviewPopover } from '@/components/pattern/PatternPreviewPopover';
 import { useStore } from '@/store/useStore';
@@ -206,6 +209,7 @@ export default function Orders() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // 批量选中的订单 ID
   const [addItemModalVisible, setAddItemModalVisible] = useState(false); // 添加订单项模态框
+  const [addProductModalVisible, setAddProductModalVisible] = useState(false); // 添加产品到订单模态框
 
   // 截图相关状态
   const [screenshotModalVisible, setScreenshotModalVisible] = useState(false);
@@ -357,6 +361,9 @@ export default function Orders() {
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate} style={{ fontWeight: 500 }}>
             新建订单
           </Button>
+          <Button icon={<ShoppingOutlined />} onClick={() => setAddProductModalVisible(true)}>
+            添加产品
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={refreshOrders} loading={loading}>
             刷新
           </Button>
@@ -390,14 +397,79 @@ export default function Orders() {
         expandable={{
           expandedRowRender: (record: Order) => (
             <div style={{ padding: '16px 0' }}>
-              <Text strong>订单明细</Text>
-              <Table
-                dataSource={record.items}
-                columns={itemColumns}
-                pagination={false}
-                rowKey="id"
-                style={{ marginTop: 8 }}
-              />
+              {/* 图案明细 */}
+              {record.items && record.items.length > 0 && (
+                <>
+                  <Text strong>图案明细</Text>
+                  <Table
+                    dataSource={record.items}
+                    columns={itemColumns}
+                    pagination={false}
+                    rowKey="id"
+                    style={{ marginTop: 8 }}
+                  />
+                </>
+              )}
+
+              {/* 产品明细 */}
+              {record.productItems && record.productItems.length > 0 && (
+                <>
+                  <div style={{ marginTop: 16 }}>
+                    <Text strong>产品明细</Text>
+                  </div>
+                  <Table
+                    dataSource={record.productItems}
+                    columns={[
+                      {
+                        title: '产品名称',
+                        dataIndex: 'productName',
+                        key: 'productName',
+                        width: 150,
+                      },
+                      {
+                        title: '颜色',
+                        dataIndex: 'color',
+                        key: 'color',
+                        width: 80,
+                        render: () => <Text type="secondary">-</Text>,
+                      },
+                      {
+                        title: '单位',
+                        dataIndex: 'productUnit',
+                        key: 'productUnit',
+                        width: 80,
+                        render: (unit: string) => <Tag>{unit}</Tag>,
+                      },
+                      {
+                        title: '数量',
+                        dataIndex: 'quantity',
+                        key: 'quantity',
+                        width: 100,
+                      },
+                      {
+                        title: '单价',
+                        dataIndex: 'price',
+                        key: 'price',
+                        width: 100,
+                        render: (price: number) => `¥${price.toFixed(2)}`,
+                      },
+                      {
+                        title: '小计',
+                        dataIndex: 'subtotal',
+                        key: 'subtotal',
+                        width: 100,
+                        render: (subtotal: number) => (
+                          <Text strong type="success">¥{subtotal.toFixed(2)}</Text>
+                        ),
+                      },
+                    ]}
+                    pagination={false}
+                    rowKey="id"
+                    style={{ marginTop: 8 }}
+                  />
+                </>
+              )}
+
               {record.notes && (
                 <div style={{ marginTop: 16 }}>
                   <Text type="secondary">备注: {record.notes}</Text>
@@ -499,6 +571,18 @@ export default function Orders() {
         onCancel={() => {
           setAddItemModalVisible(false);
           setPendingPattern(null);
+        }}
+      />
+
+      {/* 添加产品到订单模态框 */}
+      <AddProductToOrderModal
+        visible={addProductModalVisible}
+        onSuccess={async () => {
+          await refreshOrders();
+          setAddProductModalVisible(false);
+        }}
+        onCancel={() => {
+          setAddProductModalVisible(false);
         }}
       />
 

@@ -1,5 +1,8 @@
 pub mod customer;
 
+// 产品管理
+pub mod product;
+
 // 文件对话框（替代 dialog 插件）
 pub mod file_dialog;
 

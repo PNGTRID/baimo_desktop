@@ -10,6 +10,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   GlobalOutlined,
+  ShoppingOutlined,
 } from '@ant-design/icons';
 import Dashboard from '@/pages/Dashboard';
 import Customers from '@/pages/Customers';
@@ -17,6 +18,7 @@ import Patterns from '@/pages/Patterns';
 import Orders from '@/pages/Orders';
 import Financial from '@/pages/Financial';
 import Settings from '@/pages/Settings';
+import Products from '@/pages/Products';
 import { useStore } from '@/store/useStore';
 import { WebsiteApi } from '@/services/tauriApi';
 import './Layout.css';
@@ -24,7 +26,7 @@ import './Layout.css';
 const { Header, Sider, Content } = AntLayout;
 const { Text } = Typography;
 
-export type MenuKey = 'dashboard' | 'customers' | 'patterns' | 'orders' | 'financial' | 'settings';
+export type MenuKey = 'dashboard' | 'customers' | 'products' | 'patterns' | 'orders' | 'financial' | 'settings';
 
 /**
  * 白墨记账系统 - 主布局组件
@@ -50,6 +52,7 @@ export default function Layout() {
   const menuItems = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
     { key: 'customers', icon: <UserOutlined />, label: '客户管理' },
+    { key: 'products', icon: <ShoppingOutlined />, label: '产品管理' },
     { key: 'patterns', icon: <PictureOutlined />, label: '图案管理' },
     { key: 'orders', icon: <FileTextOutlined />, label: '订单管理' },
     { key: 'financial', icon: <DollarOutlined />, label: '财务管理' },
@@ -64,6 +67,8 @@ export default function Layout() {
         return <Dashboard onNavigate={setSelectedKey} />;
       case 'customers':
         return <Customers />;
+      case 'products':
+        return <Products />;
       case 'patterns':
         return <Patterns onNavigate={setSelectedKey} />;
       case 'orders':

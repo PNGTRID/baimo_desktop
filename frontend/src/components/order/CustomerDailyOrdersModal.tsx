@@ -541,6 +541,66 @@ export default function CustomerDailyOrdersModal({
                       style={{ marginBottom: 8 }}
                     />
 
+                    {/* 产品明细表格 */}
+                    {order.productItems && order.productItems.length > 0 && (
+                      <>
+                        <Typography.Text strong style={{ fontSize: 12 }}>产品明细</Typography.Text>
+                        <Table
+                          columns={[
+                            {
+                              title: '产品名称',
+                              dataIndex: 'productName',
+                              key: 'productName',
+                              width: 150,
+                            },
+                            {
+                              title: '颜色',
+                              dataIndex: 'color',
+                              key: 'color',
+                              width: 80,
+                              render: () => '-',
+                            },
+                            {
+                              title: '单位',
+                              dataIndex: 'productUnit',
+                              key: 'productUnit',
+                              width: 60,
+                              render: (unit: string) => <Tag>{unit}</Tag>,
+                            },
+                            {
+                              title: '数量',
+                              dataIndex: 'quantity',
+                              key: 'quantity',
+                              width: 60,
+                            },
+                            {
+                              title: '单价(元)',
+                              dataIndex: 'price',
+                              key: 'price',
+                              width: 80,
+                              render: (value: number) => `¥${value.toFixed(2)}`,
+                            },
+                            {
+                              title: '合计(元)',
+                              dataIndex: 'subtotal',
+                              key: 'subtotal',
+                              width: 80,
+                              render: (value: number) => (
+                                <Typography.Text strong style={{ color: '#52c41a' }}>
+                                  ¥{value.toFixed(2)}
+                                </Typography.Text>
+                              ),
+                            },
+                          ]}
+                          dataSource={order.productItems}
+                          pagination={false}
+                          size="small"
+                          rowKey="id"
+                          style={{ marginBottom: 8 }}
+                        />
+                      </>
+                    )}
+
                     {/* 订单小计 */}
                     <div style={{ textAlign: 'right', marginTop: 8 }}>
                       <Space>

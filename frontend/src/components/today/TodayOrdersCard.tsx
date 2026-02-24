@@ -4,9 +4,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Divider, Space, Typography, Spin, Empty } from 'antd';
+import { Card, Row, Col, Statistic, Divider, Space, Typography, Spin, Empty, Table, Tag } from 'antd';
 import { CalendarOutlined, QrcodeOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { OrderApi, SettingsApi } from '@/services/tauriApi';
+import type { Order, OrderPatternItem, OrderProductItem } from '@/types';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -38,6 +39,7 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
     alipay: null as string | null,
     wechat: null as string | null,
   });
+  const [todayOrders, setTodayOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     loadData();
@@ -85,6 +87,7 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
       });
 
       setQrcodes({ alipay, wechat });
+      setTodayOrders(todayOrders);
     } catch (error) {
       console.error('加载今日数据失败:', error);
     } finally {
@@ -198,6 +201,132 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
               </Space>
             </div>
           </>
+        )}
+
+        {/* 订单列表 */}
+        {todayOrders.length > 0 && (
+          <Table
+            dataSource={todayOrders}
+            columns={[
+              {
+                title: '订单号',
+                dataIndex: 'orderNumber',
+                key: 'orderNumber',
+                width: 120,
+              },
+              {
+                title: '客户',
+                dataIndex: 'customerName',
+                key: 'customerName',
+              },
+              {
+                title: '金额',
+                dataIndex: 'totalAmount',
+                key: 'totalAmount',
+                render: (amount: number) => (
+                  <span style={{ color: '#52c41a', fontWeight: 600 }}>¥{amount.toFixed(2)}</span>
+                ),
+              },
+              {
+                title: '状态',
+                dataIndex: 'isConfirmed',
+                key: 'isConfirmed',
+                render: (confirmed: boolean) => (
+                  <Tag color={confirmed ? 'green' : 'orange'}>
+                    {confirmed ? '已完成' : '进行中'}
+                  </Tag>
+                ),
+              },
+            ]}
+            rowKey="id"
+            size="small"
+            pagination={false}
+            expandable={{
+              expandedRowRender: (record: Order) => (
+                <div style={{ padding: '8px 0' }}>
+                  {/* 图案明细 */}
+                  {record.items && record.items.length > 0 && (
+                    <>
+                      <Text strong style={{ fontSize: 12 }}>图案明细</Text>
+                      <Table
+                        dataSource={record.items}
+                        columns={[
+                          { title: '图案', dataIndex: 'patternName', key: 'patternName', width: 120, size: 'small' },
+                          { title: '颜色', dataIndex: 'colorVariantName', key: 'colorVariantName', width: 60, size: 'small', render: (v: string) => v || '-' },
+                          {
+                            title: '数量',
+                            dataIndex: 'quantity',
+                            key: 'quantity',
+                            width: 80,
+                            size: 'small',
+                            render: (_: unknown, r: OrderPatternItem) =>
+                              r.pricingMode === 'AREA' ? `${r.area || 0}㎡` : `${r.quantity}个`,
+                          },
+                          {
+                            title: '单价',
+                            dataIndex: 'unitPrice',
+                            key: 'unitPrice',
+                            width: 70,
+                            size: 'small',
+                            render: (p: number) => `¥${p.toFixed(2)}`,
+                          },
+                          {
+                            title: '小计',
+                            dataIndex: 'totalPrice',
+                            key: 'totalPrice',
+                            width: 80,
+                            size: 'small',
+                            render: (p: number) => `¥${p.toFixed(2)}`,
+                          },
+                        ]}
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                      />
+                    </>
+                  )}
+
+                  {/* 产品明细 */}
+                  {record.productItems && record.productItems.length > 0 && (
+                    <>
+                      <div style={{ marginTop: 8 }}>
+                        <Text strong style={{ fontSize: 12 }}>产品明细</Text>
+                      </div>
+                      <Table
+                        dataSource={record.productItems}
+                        columns={[
+                          { title: '产品', dataIndex: 'productName', key: 'productName', width: 120, size: 'small' },
+                          { title: '颜色', dataIndex: 'color', key: 'color', width: 60, size: 'small', render: () => '-' },
+                          { title: '单位', dataIndex: 'productUnit', key: 'productUnit', width: 60, size: 'small', render: (u: string) => <Tag>{u}</Tag> },
+                          { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 80, size: 'small' },
+                          {
+                            title: '单价',
+                            dataIndex: 'price',
+                            key: 'price',
+                            width: 70,
+                            size: 'small',
+                            render: (p: number) => `¥${p.toFixed(2)}`,
+                          },
+                          {
+                            title: '小计',
+                            dataIndex: 'subtotal',
+                            key: 'subtotal',
+                            width: 80,
+                            size: 'small',
+                            render: (s: number) => <strong style={{ color: '#52c41a' }}>¥{s.toFixed(2)}</strong>,
+                          },
+                        ]}
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                      />
+                    </>
+                  )}
+                </div>
+              ),
+            }}
+            style={{ marginTop: 16 }}
+          />
         )}
 
         {/* 无数据提示 */}

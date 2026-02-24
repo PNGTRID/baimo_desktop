@@ -84,6 +84,7 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   items: OrderPatternItem[];
+  productItems?: OrderProductItem[]; // 产品订单项
 }
 
 export interface OrderPatternItem {
@@ -456,4 +457,50 @@ export interface ScanProgress {
   current: number;
   total: number;
   message: string;
+}
+
+// ============ 产品相关 ============
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  unit: string; // 单位，如：个、件、箱
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductRequest {
+  name: string;
+  price: number;
+  unit: string;
+}
+
+export interface UpdateProductRequest {
+  id: string;
+  name?: string;
+  price?: number;
+  unit?: string;
+}
+
+// ============ 产品订单项相关 ============
+export interface OrderProductItem {
+  id: string;
+  productId: string;
+  productName: string;
+  productUnit: string; // 产品单位
+  quantity: number;
+  price: number; // 下单时的价格
+  subtotal: number; // 小计
+}
+
+export interface CreateOrderProductItemRequest {
+  productId: string;
+  quantity: number;
+}
+
+export interface AddProductsToOrderRequest {
+  orderId?: string; // 如果指定则添加到现有订单，否则创建新订单
+  customerId: string;
+  productItems: CreateOrderProductItemRequest[];
+  notes?: string;
 }

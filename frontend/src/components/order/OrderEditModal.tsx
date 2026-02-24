@@ -23,8 +23,8 @@ import {
   Popconfirm,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { CustomerApi, OrderApi, PatternApi } from '@/services/tauriApi';
-import type { Customer, Pattern, PricingMode, CreateOrderItemRequest, PatternColor, OrderPatternItem } from '@/types';
+import { CustomerApi, OrderApi, PatternApi, ProductApi } from '@/services/tauriApi';
+import type { Customer, Pattern, PricingMode, CreateOrderItemRequest, PatternColor, OrderPatternItem, OrderProductItem } from '@/types';
 import EnhancedPatternSelector from '@/components/pattern/EnhancedPatternSelector';
 
 interface OrderEditModalProps {
@@ -63,6 +63,7 @@ export default function OrderEditModal({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([]);
+  const [productItems, setProductItems] = useState<OrderProductItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [patternSelectorVisible, setPatternSelectorVisible] = useState(false);
@@ -118,6 +119,9 @@ export default function OrderEditModal({
               })
             );
             setOrderItems(items);
+
+            // 设置产品订单项
+            setProductItems(order.productItems || []);
           }
         } catch (error) {
           message.error('加载订单失败: ' + error);
@@ -128,6 +132,7 @@ export default function OrderEditModal({
         // 新建模式，预设客户
         form.setFieldValue('customerId', propCustomerId);
         setOrderItems([]);
+        setProductItems([]);
       }
     };
 
@@ -247,6 +252,52 @@ export default function OrderEditModal({
         item.key === key ? { ...item, [field]: value } : item
       )
     );
+  };
+
+  // 更新产品数量
+  const handleProductQuantityChange = async (productItemId: string, newQuantity: number) => {
+    // 先更新本地状态
+    setProductItems(
+      productItems.map((item) =>
+        item.id === productItemId
+          ? { ...item, quantity: newQuantity, subtotal: newQuantity * item.price }
+          : item
+      )
+    );
+
+    // 如果是编辑模式，调用 API 更新后端
+    if (mode === 'edit' && orderId) {
+      try {
+        await ProductApi.updateOrderProductItem(productItemId, newQuantity);
+        message.success('产品数量已更新');
+      } catch (error) {
+        console.error('更新产品数量失败:', error);
+        message.error('更新失败: ' + error);
+        // 重新加载订单数据以恢复状态
+        const order = await OrderApi.getById(orderId);
+        if (order) {
+          setProductItems(order.productItems || []);
+        }
+      }
+    }
+  };
+
+  // 删除产品项
+  const handleDeleteProductItem = async (productItemId: string) => {
+    // 如果是编辑模式，调用 API 删除
+    if (mode === 'edit' && orderId) {
+      try {
+        await ProductApi.deleteOrderProductItem(productItemId);
+        message.success('产品已从订单中移除');
+      } catch (error) {
+        console.error('删除产品失败:', error);
+        message.error('删除失败: ' + error);
+        return;
+      }
+    }
+
+    // 更新本地状态
+    setProductItems(productItems.filter((item) => item.id !== productItemId));
   };
 
   // 提交表单
@@ -480,6 +531,87 @@ export default function OrderEditModal({
               locale={{ emptyText: '请添加订单项' }}
             />
           </Card>
+
+          {/* 产品明细表格 */}
+          {productItems.length > 0 && (
+            <Card
+              size="small"
+              title="产品明细"
+              style={{ marginBottom: 16 }}
+            >
+              <Table
+                dataSource={productItems}
+                columns={[
+                  {
+                    title: '产品名称',
+                    dataIndex: 'productName',
+                    key: 'productName',
+                    width: 150,
+                  },
+                  {
+                    title: '颜色',
+                    dataIndex: 'color',
+                    key: 'color',
+                    width: 80,
+                    render: () => <Tag>-</Tag>,
+                  },
+                  {
+                    title: '单位',
+                    dataIndex: 'productUnit',
+                    key: 'productUnit',
+                    width: 80,
+                    render: (unit: string) => <Tag>{unit}</Tag>,
+                  },
+                  {
+                    title: '数量',
+                    dataIndex: 'quantity',
+                    key: 'quantity',
+                    width: 100,
+                    render: (quantity: number, record: OrderProductItem) => (
+                      <InputNumber
+                        min={1}
+                        value={quantity}
+                        onChange={(value) => handleProductQuantityChange(record.id, value || 1)}
+                        size="small"
+                        style={{ width: 70 }}
+                      />
+                    ),
+                  },
+                  {
+                    title: '单价',
+                    dataIndex: 'price',
+                    key: 'price',
+                    width: 100,
+                    render: (price: number) => `¥${price.toFixed(2)}`,
+                  },
+                  {
+                    title: '小计',
+                    dataIndex: 'subtotal',
+                    key: 'subtotal',
+                    width: 100,
+                    render: (subtotal: number) => <strong style={{ color: '#52c41a' }}>¥{subtotal.toFixed(2)}</strong>,
+                  },
+                  {
+                    title: '操作',
+                    key: 'action',
+                    width: 60,
+                    render: (_: unknown, record: OrderProductItem) => (
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteProductItem(record.id)}
+                        size="small"
+                      />
+                    ),
+                  },
+                ]}
+                rowKey="id"
+                size="small"
+                pagination={false}
+              />
+            </Card>
+          )}
 
           {/* 金额汇总 */}
           {orderItems.length > 0 && (

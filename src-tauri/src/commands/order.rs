@@ -1,4 +1,4 @@
-use crate::models::{CreateOrderRequest, Order, OrderPatternItem, UpdateOrderRequest, UpdateOrderFullRequest};
+use crate::models::{CreateOrderRequest, Order, OrderPatternItem, OrderProductItem, UpdateOrderRequest, UpdateOrderFullRequest};
 use crate::services::{Database, pricing::calculate_pattern_price};
 use crate::utils::logging::log_order_operation;
 use tauri::State;
@@ -106,6 +106,26 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
             },
         ).map_err(|e| format!("Failed to fetch order items: {:?}", e))?;
 
+        // 获取订单的产品项
+        let product_items = db.sqlite().query_map(
+            "SELECT oi.id, oi.product_id, p.name as product_name, p.unit, oi.quantity, oi.price, oi.subtotal
+             FROM order_items oi
+             JOIN products p ON oi.product_id = p.id
+             WHERE oi.order_id = ?1",
+            &[&order_id as &dyn rusqlite::ToSql],
+            |row: &rusqlite::Row| {
+                Ok(OrderProductItem {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    product_name: row.get(2)?,
+                    product_unit: row.get(3)?,
+                    quantity: row.get(4)?,
+                    price: row.get(5)?,
+                    subtotal: row.get(6)?,
+                })
+            },
+        ).map_err(|e| format!("Failed to fetch order product items: {:?}", e))?;
+
         result.push(Order {
             id: order_id.clone(),
             order_number: format!("ORD-{}", &order_id.chars().take(8).collect::<String>()),
@@ -118,6 +138,7 @@ pub async fn get_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
             created_at,
             updated_at,
             items,
+            product_items,
         });
     }
 
@@ -197,6 +218,26 @@ pub async fn get_order_by_id(
                 },
             ).map_err(|e| format!("Failed to fetch order items: {:?}", e))?;
 
+            // 获取订单的产品项
+            let product_items = db.sqlite().query_map(
+                "SELECT oi.id, oi.product_id, p.name as product_name, p.unit, oi.quantity, oi.price, oi.subtotal
+                 FROM order_items oi
+                 JOIN products p ON oi.product_id = p.id
+                 WHERE oi.order_id = ?1",
+                &[&order_id as &dyn rusqlite::ToSql],
+                |row: &rusqlite::Row| {
+                    Ok(OrderProductItem {
+                        id: row.get(0)?,
+                        product_id: row.get(1)?,
+                        product_name: row.get(2)?,
+                        product_unit: row.get(3)?,
+                        quantity: row.get(4)?,
+                        price: row.get(5)?,
+                        subtotal: row.get(6)?,
+                    })
+                },
+            ).map_err(|e| format!("Failed to fetch order product items: {:?}", e))?;
+
             Ok(Some(Order {
                 id: order_id.clone(),
                 order_number: format!("ORD-{}", &order_id.chars().take(8).collect::<String>()),
@@ -209,6 +250,7 @@ pub async fn get_order_by_id(
                 created_at,
                 updated_at,
                 items,
+                product_items,
             }))
         }
         Ok(None) => Ok(None),
@@ -418,6 +460,7 @@ pub async fn create_order(
         created_at: now_iso.clone(),
         updated_at: now_iso,
         items: order_items,
+        product_items: vec![],
     })
 }
 
@@ -802,5 +845,6 @@ pub async fn update_order_full(
         created_at: now_iso.clone(), // 简化：使用当前时间
         updated_at: now_iso,
         items: order_items,
+        product_items: vec![],
     })
 }
