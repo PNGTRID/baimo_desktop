@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, Button, Space, Alert, Progress, Typography, App } from 'antd';
 import { CloudDownloadOutlined, ReloadOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { check } from '@tauri-apps/plugin-updater';
@@ -23,6 +23,8 @@ export default function UpdateChecker() {
     // 从 package.json 或环境变量获取当前版本
     return '2.2.0';
   });
+  // 用于追踪下载进度
+  const downloadTrackerRef = useRef({ downloaded: 0, total: 0 });
 
   /**
    * 检查更新
@@ -90,6 +92,7 @@ export default function UpdateChecker() {
         onOk: async () => {
           setDownloading(true);
           setDownloadProgress(0);
+          downloadTrackerRef.current = { downloaded: 0, total: 0 };
 
           try {
             // 下载并安装更新
@@ -97,14 +100,19 @@ export default function UpdateChecker() {
               switch (event.event) {
                 case 'Started':
                   console.log('[更新] 开始下载...');
+                  downloadTrackerRef.current.total = event.data.contentLength || 0;
                   break;
                 case 'Progress':
-                  const progress = Math.round((event.data.downloaded / event.data.contentLength) * 100);
-                  setDownloadProgress(progress);
-                  console.log(`[更新] 下载进度: ${progress}%`);
+                  downloadTrackerRef.current.downloaded += event.data.chunkLength;
+                  if (downloadTrackerRef.current.total > 0) {
+                    const progress = Math.round((downloadTrackerRef.current.downloaded / downloadTrackerRef.current.total) * 100);
+                    setDownloadProgress(progress);
+                    console.log(`[更新] 下载进度: ${progress}%`);
+                  }
                   break;
                 case 'Finished':
                   console.log('[更新] 下载完成');
+                  setDownloadProgress(100);
                   break;
               }
             });

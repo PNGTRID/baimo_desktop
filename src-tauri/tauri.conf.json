@@ -38,8 +38,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/imagemagick/*",
-      "resources/imagemagick/modules/**/*"
+      "resources/imagemagick/*"
     ],
     "windows": {
       "webviewInstallMode": {

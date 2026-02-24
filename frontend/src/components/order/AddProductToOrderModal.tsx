@@ -11,14 +11,13 @@ import {
   App,
   Space,
   Tag,
-  Input,
   Button,
   Typography,
   Select,
 } from 'antd';
-import { ShoppingOutlined, PlusOutlined } from '@ant-design/icons';
+import { ShoppingOutlined } from '@ant-design/icons';
 import { ProductApi, OrderApi, CustomerApi } from '@/services/tauriApi';
-import type { Product, Order, Customer, CreateOrderProductItemRequest } from '@/types';
+import type { Product, Order, Customer } from '@/types';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -228,7 +227,7 @@ export default function AddProductToOrderModal({
       dataIndex: 'price',
       key: 'price',
       width: 100,
-      render: (price: number, record: Product) => (
+      render: (price: number) => (
         <Text strong>¥{price.toFixed(2)}</Text>
       ),
     },

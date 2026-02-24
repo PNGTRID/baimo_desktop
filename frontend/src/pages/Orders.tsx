@@ -24,7 +24,7 @@ import {
   CalendarOutlined,
   ShoppingOutlined,
 } from '@ant-design/icons';
-import type { Order, OrderPatternItem, OrderProductItem, Pattern } from '@/types';
+import type { Order, OrderPatternItem, Pattern } from '@/types';
 import { OrderApi } from '@/services/tauriApi';
 import dayjs from 'dayjs';
 import type { UploadFile, UploadProps } from 'antd';

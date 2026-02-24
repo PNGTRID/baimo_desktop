@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Divider, Space, Typography, Spin, Empty, Table, Tag } from 'antd';
 import { CalendarOutlined, QrcodeOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { OrderApi, SettingsApi } from '@/services/tauriApi';
-import type { Order, OrderPatternItem, OrderProductItem } from '@/types';
+import type { Order, OrderPatternItem } from '@/types';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -251,14 +251,13 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
                       <Table
                         dataSource={record.items}
                         columns={[
-                          { title: '图案', dataIndex: 'patternName', key: 'patternName', width: 120, size: 'small' },
-                          { title: '颜色', dataIndex: 'colorVariantName', key: 'colorVariantName', width: 60, size: 'small', render: (v: string) => v || '-' },
+                          { title: '图案', dataIndex: 'patternName', key: 'patternName', width: 120 },
+                          { title: '颜色', dataIndex: 'colorVariantName', key: 'colorVariantName', width: 60, render: (v: string) => v || '-' },
                           {
                             title: '数量',
                             dataIndex: 'quantity',
                             key: 'quantity',
                             width: 80,
-                            size: 'small',
                             render: (_: unknown, r: OrderPatternItem) =>
                               r.pricingMode === 'AREA' ? `${r.area || 0}㎡` : `${r.quantity}个`,
                           },
@@ -267,7 +266,6 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
                             dataIndex: 'unitPrice',
                             key: 'unitPrice',
                             width: 70,
-                            size: 'small',
                             render: (p: number) => `¥${p.toFixed(2)}`,
                           },
                           {
@@ -275,7 +273,6 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
                             dataIndex: 'totalPrice',
                             key: 'totalPrice',
                             width: 80,
-                            size: 'small',
                             render: (p: number) => `¥${p.toFixed(2)}`,
                           },
                         ]}
@@ -295,16 +292,15 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
                       <Table
                         dataSource={record.productItems}
                         columns={[
-                          { title: '产品', dataIndex: 'productName', key: 'productName', width: 120, size: 'small' },
-                          { title: '颜色', dataIndex: 'color', key: 'color', width: 60, size: 'small', render: () => '-' },
-                          { title: '单位', dataIndex: 'productUnit', key: 'productUnit', width: 60, size: 'small', render: (u: string) => <Tag>{u}</Tag> },
-                          { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 80, size: 'small' },
+                          { title: '产品', dataIndex: 'productName', key: 'productName', width: 120 },
+                          { title: '颜色', dataIndex: 'color', key: 'color', width: 60, render: () => '-' },
+                          { title: '单位', dataIndex: 'productUnit', key: 'productUnit', width: 60, render: (u: string) => <Tag>{u}</Tag> },
+                          { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 80 },
                           {
                             title: '单价',
                             dataIndex: 'price',
                             key: 'price',
                             width: 70,
-                            size: 'small',
                             render: (p: number) => `¥${p.toFixed(2)}`,
                           },
                           {
@@ -312,7 +308,6 @@ export default function TodayOrdersCard({ className }: TodayOrdersCardProps) {
                             dataIndex: 'subtotal',
                             key: 'subtotal',
                             width: 80,
-                            size: 'small',
                             render: (s: number) => <strong style={{ color: '#52c41a' }}>¥{s.toFixed(2)}</strong>,
                           },
                         ]}
