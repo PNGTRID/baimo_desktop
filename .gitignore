@@ -265,6 +265,7 @@ config/production.js
 .bmad-core/
 .claude/
 .spec-workflow/
+.serena/
 .playwright-mcp/
 
 # Web版参考代码
