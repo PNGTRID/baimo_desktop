@@ -6,6 +6,10 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.0+-FFC131.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19+-61DAFB.svg)](https://reactjs.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.80+-000000.svg)](https://www.rust-lang.org/)
+[![GitHub Stars](https://img.shields.io/github/stars/PNGTRID/baimo_desktop?style=flat)](https://github.com/PNGTRID/baimo_desktop)
+[![GitHub Release](https://img.shields.io/github/v/release/PNGTRID/baimo_desktop)](https://github.com/PNGTRID/baimo_desktop/releases)
+
+**📦 下载地址**: [https://github.com/PNGTRID/baimo_desktop/releases](https://github.com/PNGTRID/baimo_desktop/releases)
 
 ## 📋 项目概述
 
@@ -18,6 +22,7 @@
 - **🎨 现代化 UI**: React 19 + Ant Design 6 提供优雅的界面
 - **⚡ 高性能**: Rust 后端确保快速的数据处理
 - **🔒 数据安全**: 本地存储，无需担心云端数据泄露
+- **🔄 自动更新**: 支持一键自动更新，轻松获取最新功能
 
 ## 🚀 快速开始
 
@@ -35,7 +40,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
+git clone https://github.com/PNGTRID/baimo_desktop.git
 cd baimo_desktop
 
 # 2. 安装依赖
@@ -44,6 +49,12 @@ npm install
 # 3. 启动开发服务器
 npm run tauri:dev
 ```
+
+### 下载安装包
+
+前往 [Releases](https://github.com/PNGTRID/baimo_desktop/releases) 页面下载最新版本的安装包：
+- **Windows**: `PNG部落记账_x.x.x_x64-setup.exe`
+- **macOS**: `baimo_desktop_x.x.x_x64.dmg` 或 `baimo_desktop_x.x.x_aarch64.dmg`
 
 ### 🛠️ 开发脚本
 
@@ -128,15 +139,13 @@ baimo_desktop/
 
 - **👥 客户管理**: 客户信息 CRUD、余额管理、信用额度
 - **📋 订单管理**: 订单创建、订单项管理、状态跟踪
-- **🎨 图案管理**: 图案库管理（基础框架）
+- **🎨 图案管理**: 图案库管理、TIF/TIFF 文件解析、预览图持久化
 - **💾 本地存储**: SQLite 数据库自动初始化
-
-### 开发中功能 🚧
-
-- **📊 数据统计**: 销售报表、财务分析
-- **🖼️ 图案导入**: TIFF 文件解析和导入
+- **📊 数据统计**: 今日订单统计、销售报表、财务分析
 - **🧮 价格计算**: 自动价格计算引擎
 - **📤 数据导出**: Excel/CSV 导出功能
+- **🔄 自动更新**: 一键自动更新功能
+- **💾 数据备份**: 数据库备份与恢复
 
 ## 📖 开发指南
 
@@ -199,5 +208,5 @@ baimo_desktop/
 
 **🖥️ 白墨记账系统桌面版** - 让印花行业管理更简单、更高效！
 
-**最后更新**: 2026-01-10
-**版本**: v0.1.0-alpha
+**最后更新**: 2026-02-24
+**版本**: v2.2.0

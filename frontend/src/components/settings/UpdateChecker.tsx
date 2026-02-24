@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Button, Space, Alert, Progress, Typography, App } from 'antd';
 import { CloudDownloadOutlined, ReloadOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { check } from '@tauri-apps/plugin-updater';
@@ -54,6 +54,16 @@ export default function UpdateChecker() {
       setChecking(false);
     }
   };
+
+  // 组件挂载时自动检查更新
+  useEffect(() => {
+    // 延迟 2 秒后检查，避免影响页面加载
+    const timer = setTimeout(() => {
+      checkForUpdates();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   /**
    * 下载并安装更新
