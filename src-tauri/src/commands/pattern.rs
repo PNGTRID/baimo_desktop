@@ -1697,14 +1697,48 @@ fn get_imagemagick_path() -> Option<(std::path::PathBuf, Option<std::path::PathB
         }
     }
 
-    // 2. 尝试系统 PATH 中的 magick
+    // 2. 尝试常见的 ImageMagick 安装路径
+    eprintln!("[ImageMagick调试] 尝试常见的安装路径");
+    let common_paths = vec![
+        "C:\\Program Files\\ImageMagick",
+        "C:\\Program Files (x86)\\ImageMagick",
+        "D:\\Program Files\\ImageMagick",
+        "C:\\ImageMagick",
+        "D:\\ImageMagick",
+    ];
+
+    for base_path in common_paths {
+        eprintln!("[ImageMagick调试] 检查路径: {}", base_path);
+        if let Ok(entries) = std::fs::read_dir(base_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("exe") {
+                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if file_name == "magick.exe" || file_name == "convert.exe" {
+                        eprintln!("[ImageMagick调试] 找到可执行文件: {:?}", path);
+                        // 找到安装目录，设置配置目录
+                        if let Ok(mut entries2) = std::fs::read_dir(base_path) {
+                            let has_modules = entries2.any(|e| {
+                                e.is_ok() && e.as_ref().unwrap().path().extension().and_then(|s| s.to_str()) == Some("xml")
+                            });
+                            let config_dir = if has_modules { Some(PathBuf::from(base_path)) } else { None };
+                            eprintln!("[ImageMagick] 使用安装版本: {:?}, 配置目录: {:?}", path, config_dir);
+                            return Some((path, config_dir));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 尝试系统 PATH 中的 magick
     eprintln!("[ImageMagick调试] 尝试系统 PATH 中的 magick");
     if let Ok(_) = std::process::Command::new("magick").arg("-version").output() {
         eprintln!("[ImageMagick] 使用系统安装的 magick");
         return Some((PathBuf::from("magick"), None));
     }
 
-    // 3. 尝试系统 PATH 中的 convert（旧版）
+    // 4. 尝试系统 PATH 中的 convert（旧版）
     eprintln!("[ImageMagick调试] 尝试系统 PATH 中的 convert");
     if let Ok(_) = std::process::Command::new("convert").arg("-version").output() {
         eprintln!("[ImageMagick] 使用系统安装的 convert");

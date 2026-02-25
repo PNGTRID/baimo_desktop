@@ -1,6 +1,6 @@
 {
   "name": "baimo_desktop",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "main": "index.js",
   "scripts": {
     "dev": "./scripts/dev.sh",
@@ -11,7 +11,10 @@
     "tauri:build": "cd frontend && npm run tauri:build",
     "prisma:generate": "cd src-tauri && export PATH=\"$(pwd):$PATH\" && cargo run --bin prisma --features prisma-cli -- generate --schema=../prisma/schema.prisma",
     "prisma:migrate": "cd prisma && DATABASE_URL=\"file:./dev.db\" npx prisma@3.15.2 migrate dev",
-    "prisma:studio": "cd prisma && npx prisma studio"
+    "prisma:studio": "cd prisma && npx prisma studio",
+    "version:patch": "node scripts/version-bump.js patch",
+    "version:minor": "node scripts/version-bump.js minor",
+    "version:major": "node scripts/version-bump.js major"
   },
   "keywords": [],
   "author": "",
