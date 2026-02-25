@@ -55,7 +55,7 @@ pub fn run() {
                     PathBuf::from("../../prisma/dev.db"),
                     PathBuf::from("prisma/dev.db"),
                     // 绝对路径（开发环境）
-                    PathBuf::from("e:/Users/Administrator/Desktop/baimo_desktop/prisma/dev.db"),
+                    PathBuf::from("c:/Users/Administrator/Desktop/AI_DEV/baimo_desktop/prisma/dev.db"),
                 ];
 
                 let mut copied = false;
