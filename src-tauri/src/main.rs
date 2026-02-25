@@ -287,6 +287,7 @@ pub fn run() {
             // ============================================================
             seed_data::seed_company_configs,
             seed_data::seed_color_presets,
+            seed_data::run_migrations,
 
             // ============================================================
             // 系统设置命令 - 系统日志

@@ -159,3 +159,41 @@ async fn get_all_color_presets(db: State<'_, Database>) -> Result<Vec<ColorPrese
         )
         .map_err(|e| format!("Failed to fetch color presets: {}", e))
 }
+
+/// 执行数据库迁移 - 添加缺失的 is_active 列
+#[tauri::command]
+pub async fn run_migrations(db: State<'_, Database>) -> Result<String, String> {
+    eprintln!("[迁移] 开始执行数据库迁移...");
+
+    let mut migrations_applied = Vec::new();
+
+    // 尝试添加 pattern_folders.is_active 列（如果已存在会忽略）
+    let folder_result = db.sqlite().execute(
+        "ALTER TABLE pattern_folders ADD COLUMN is_active BOOLEAN DEFAULT 1",
+        &[] as &[&dyn rusqlite::ToSql],
+    );
+
+    if folder_result.is_ok() {
+        eprintln!("[迁移] 添加 pattern_folders.is_active 列");
+        migrations_applied.push("pattern_folders.is_active");
+    }
+
+    // 尝试添加 pattern_colors.is_active 列
+    let color_result = db.sqlite().execute(
+        "ALTER TABLE pattern_colors ADD COLUMN is_active BOOLEAN DEFAULT 1",
+        &[] as &[&dyn rusqlite::ToSql],
+    );
+
+    if color_result.is_ok() {
+        eprintln!("[迁移] 添加 pattern_colors.is_active 列");
+        migrations_applied.push("pattern_colors.is_active");
+    }
+
+    if migrations_applied.is_empty() {
+        eprintln!("[迁移] 所有迁移已完成，无需执行");
+        Ok("所有迁移已完成".to_string())
+    } else {
+        eprintln!("[迁移] 已应用 {} 个迁移", migrations_applied.len());
+        Ok(format!("已应用 {} 个迁移: {}", migrations_applied.len(), migrations_applied.join(", ")))
+    }
+}
