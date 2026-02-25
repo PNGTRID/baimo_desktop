@@ -20,7 +20,8 @@ const DEFAULT_UNITS_PER_ROW: i32 = 2;
 const DEFAULT_ROW_COUNT: i32 = 10;
 
 /// 快速预览缩略图尺寸（像素）
-const THUMBNAIL_PREVIEW_SIZE: u32 = 800;
+/// 200px + JPEG 质量 50% ≈ 20-30KB（适合内存缓存）
+const THUMBNAIL_PREVIEW_SIZE: u32 = 200;
 
 // ============================================================
 // 辅助函数
@@ -1670,7 +1671,18 @@ fn get_imagemagick_path() -> Option<(std::path::PathBuf, Option<std::path::PathB
     use std::env;
     use std::path::PathBuf;
 
-    // 1. 尝试使用捆绑的 ImageMagick（推荐）
+    // 0. 开发环境：优先查找 src-tauri/resources/imagemagick（开发调试）
+    if let Ok(current_dir) = env::current_dir() {
+        // 开发环境：当前工作目录 -> src-tauri/resources/imagemagick
+        let dev_magick_path = current_dir.join("src-tauri").join("resources").join("imagemagick").join("magick.exe");
+        if dev_magick_path.exists() {
+            let dev_dir = dev_magick_path.parent().unwrap().to_path_buf();
+            eprintln!("[ImageMagick] 使用开发环境版本: {:?}", dev_magick_path);
+            return Some((dev_magick_path, Some(dev_dir)));
+        }
+    }
+
+    // 1. 尝试使用打包的 ImageMagick（生产环境）
     if let Ok(exe_dir) = env::current_exe() {
         eprintln!("[ImageMagick调试] 当前可执行文件路径: {:?}", exe_dir);
         if let Some(parent) = exe_dir.parent() {
@@ -1861,22 +1873,31 @@ pub async fn save_pattern_image_cache(
     use std::fs;
     use std::io::Write;
 
-    // 1. 获取应用数据目录
+    // 1. 提取纯 base64 数据（移除 data URL 前缀）
+    let base64_data = if image_data.starts_with("data:") {
+        // 格式: "data:image/jpeg;base64,{base64}"
+        image_data.split(',').nth(1)
+            .ok_or_else(|| "Invalid data URL format".to_string())?
+    } else {
+        &image_data
+    };
+
+    // 2. 获取应用数据目录
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
-    // 2. 创建缓存目录
+    // 3. 创建缓存目录
     let cache_dir = app_data_dir.join("image_cache");
     fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create cache dir: {}", e))?;
 
-    // 3. 生成缓存文件名（使用文件路径的 MD5 哈希）
+    // 4. 生成缓存文件名（使用文件路径的 MD5 哈希）
     let file_hash = format!("{:x}", md5::compute(file_path.as_bytes()));
     let cache_path = cache_dir.join(format!("{}.png", file_hash));
 
-    // 4. 将 base64 数据解码并写入文件
+    // 5. 将 base64 数据解码并写入文件
     use base64::Engine;
-    let image_bytes = base64::engine::general_purpose::STANDARD.decode(&image_data)
+    let image_bytes = base64::engine::general_purpose::STANDARD.decode(base64_data)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     let mut file = fs::File::create(&cache_path)

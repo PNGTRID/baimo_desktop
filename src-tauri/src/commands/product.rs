@@ -267,13 +267,15 @@ pub async fn add_products_to_order(
         order_id = uuid::Uuid::new_v4().to_string();
 
         // 生成订单号
+        let order_date = now; // 使用当前时间戳作为 order_date
         db.sqlite()
             .execute(
-                "INSERT INTO orders (id, customer_id, total_amount, is_confirmed, notes, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO orders (id, customer_id, order_date, total_amount, is_confirmed, notes, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     &order_id,
                     &request.customer_id,
+                    order_date, // 订单日期
                     0.0, // total_amount
                     false, // is_confirmed
                     request.notes.as_deref().unwrap_or(""),

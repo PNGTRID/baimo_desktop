@@ -969,3 +969,15 @@ export const WebsiteApi = {
     await safeInvoke<void>('open_website');
   },
 };
+
+/**
+ * 系统 API - 数据库迁移等
+ */
+export const SystemApi = {
+  /**
+   * 运行数据库迁移
+   */
+  async runMigrations(): Promise<string> {
+    return await safeInvoke<string>('run_migrations');
+  },
+};

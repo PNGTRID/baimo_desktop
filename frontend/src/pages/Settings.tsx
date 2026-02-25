@@ -32,6 +32,7 @@ import {
   GlobalOutlined,
   UploadOutlined,
   QrcodeOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
 import type { ColorPreset, SystemLog } from '@/types';
 import { SettingsApi, ColorPresetApi, SystemLogApi, FinancialApi, BackupApi, WebsiteApi, FileDialogApi } from '@/services/tauriApi';
@@ -43,7 +44,10 @@ const { Title, Text } = Typography;
 
 export default function Settings() {
   const { message } = App.useApp();
-  const { loadConfig } = useStore();
+  const { loadConfig, clearPatternImageCache, patternImageCache } = useStore();
+
+  // ========== 图片缓存状态 ==========
+  const [cacheClearing, setCacheClearing] = useState(false);
 
   // ========== 配置管理状态 ==========
   const [configForm] = Form.useForm();
@@ -411,6 +415,38 @@ export default function Settings() {
     } catch (error) {
       message.error('获取数据库路径失败: ' + error);
     }
+  };
+
+  // ========== 图片缓存处理 ==========
+  const handleClearImageCache = async () => {
+    Modal.confirm({
+      title: '清理图片缓存',
+      content: (
+        <div>
+          <p>将清除所有图案预览图的磁盘缓存，清理后首次查看图案时会重新生成。</p>
+          <p style={{ color: '#8c8c8c', fontSize: 12, marginTop: 8 }}>
+            当前内存缓存：{patternImageCache.size} 张图片
+          </p>
+        </div>
+      ),
+      okText: '确认清理',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          setCacheClearing(true);
+          message.loading('正在清理缓存...', 0);
+          // 同时清理磁盘缓存和内存缓存
+          await clearPatternImageCache();
+          message.destroy();
+          message.success('图片缓存已清理');
+        } catch (error) {
+          message.destroy();
+          message.error('清理失败: ' + error);
+        } finally {
+          setCacheClearing(false);
+        }
+      },
+    });
   };
 
   const handleClearData = async () => {
@@ -1040,6 +1076,47 @@ export default function Settings() {
                       <Button icon={<SaveOutlined />} onClick={handleBackupDatabase}>
                         查看数据库位置
                       </Button>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Row gutter={16} style={{ marginTop: 16 }}>
+                  <Col span={24}>
+                    <Card
+                      title={
+                        <Space>
+                          <PictureOutlined />
+                          图片缓存管理
+                        </Space>
+                      }
+                      extra={<Tag color="green">约 {patternImageCache.size * 30}KB</Tag>}
+                    >
+                      <p style={{ marginBottom: 16 }}>
+                        图案预览图缓存可加速图片加载，清理后首次查看会重新生成
+                      </p>
+                      <Space>
+                        <Statistic
+                          title="内存缓存"
+                          value={patternImageCache.size}
+                          suffix="张"
+                          valueStyle={{ fontSize: 16 }}
+                        />
+                        <Statistic
+                          title="预估内存"
+                          value={Math.round(patternImageCache.size * 30 / 1024 * 100) / 100}
+                          suffix="MB"
+                          valueStyle={{ fontSize: 16 }}
+                        />
+                      </Space>
+                      <div style={{ marginTop: 16 }}>
+                        <Button
+                          icon={<ClearOutlined />}
+                          loading={cacheClearing}
+                          onClick={handleClearImageCache}
+                        >
+                          清理图片缓存
+                        </Button>
+                      </div>
                     </Card>
                   </Col>
                 </Row>

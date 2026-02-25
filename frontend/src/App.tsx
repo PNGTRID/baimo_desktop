@@ -4,6 +4,7 @@ import zhCN from 'antd/locale/zh_CN';
 import Layout from './components/layout/Layout';
 import { antdTheme } from './styles/theme';
 import { useStore } from './store/useStore';
+import { SystemApi } from './services/tauriApi';
 import './styles/global.css';
 
 /**
@@ -13,9 +14,21 @@ import './styles/global.css';
 function App() {
   const { loadConfig } = useStore();
 
-  // 应用启动时加载配置
+  // 应用启动时执行初始化
   useEffect(() => {
-    loadConfig();
+    const initApp = async () => {
+      // 1. 运行数据库迁移
+      try {
+        await SystemApi.runMigrations();
+      } catch (err) {
+        console.error('数据库迁移失败:', err);
+      }
+
+      // 2. 加载配置
+      loadConfig();
+    };
+
+    initApp();
   }, [loadConfig]);
 
   return (

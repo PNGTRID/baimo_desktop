@@ -152,7 +152,12 @@ export const useStore = create<AppState>()(
               try {
                 const cached = await PatternApi.loadImageCache(filePath);
                 if (cached) {
-                  return [filePath, cached] as [string, string];
+                  // 后端返回的是纯 base64 字符串，需要添加 data URL 前缀
+                  // 如果已经有前缀则直接使用，否则添加 PNG 前缀
+                  const dataUrl = cached.startsWith('data:')
+                    ? cached
+                    : `data:image/png;base64,${cached}`;
+                  return [filePath, dataUrl] as [string, string];
                 }
               } catch (error) {
                 // 忽略单个文件加载失败

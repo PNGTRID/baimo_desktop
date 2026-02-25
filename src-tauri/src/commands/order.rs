@@ -645,6 +645,19 @@ pub async fn batch_delete_orders(
 ) -> Result<usize, String> {
     let mut count = 0;
     for id in &ids {
+        // 先删除关联的订单项
+        db.sqlite().execute(
+            "DELETE FROM order_items WHERE order_id = ?1",
+            &[&id as &dyn rusqlite::ToSql],
+        ).map_err(|e| format!("Failed to delete order items for order {:?}: {:?}", id, e))?;
+
+        // 再删除关联的图案订单项
+        db.sqlite().execute(
+            "DELETE FROM order_pattern_items WHERE order_id = ?1",
+            &[&id as &dyn rusqlite::ToSql],
+        ).map_err(|e| format!("Failed to delete order pattern items for order {:?}: {:?}", id, e))?;
+
+        // 最后删除订单
         db.sqlite().execute(
             "DELETE FROM orders WHERE id = ?1",
             &[&id as &dyn rusqlite::ToSql],
